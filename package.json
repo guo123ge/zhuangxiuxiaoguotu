@@ -1,0 +1,52 @@
+{
+  "name": "floorplan-studio",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "prisma generate && next build",
+    "start": "next start",
+    "lint": "next lint",
+    "test": "node --test tests/*.test.ts",
+    "typecheck": "tsc --noEmit",
+    "verify": "npm run typecheck && npm run lint && npm test && npm run build",
+    "prisma:generate": "prisma generate",
+    "prisma:push": "prisma db push",
+    "seed": "node prisma/seed.ts",
+    "db:reset": "prisma db push --force-reset && npm run seed"
+  },
+  "dependencies": {
+    "@napi-rs/canvas": "^0.1.80",
+    "@photo-sphere-viewer/core": "^5.14.0",
+    "@photo-sphere-viewer/gallery-plugin": "^5.14.0",
+    "@photo-sphere-viewer/markers-plugin": "^5.14.0",
+    "@photo-sphere-viewer/virtual-tour-plugin": "^5.14.0",
+    "@prisma/client": "^6.19.0",
+    "@react-three/drei": "^9.114.0",
+    "@react-three/fiber": "^8.17.10",
+    "clsx": "^2.1.1",
+    "lucide-react": "^0.468.0",
+    "next": "14.2.32",
+    "pdfjs-dist": "^4.10.38",
+    "react": "18.3.1",
+    "react-dom": "18.3.1",
+    "sharp": "^0.35.1",
+    "three": "0.185.1",
+    "three-bvh-csg": "^0.0.17",
+    "three-mesh-bvh": "^0.7.8",
+    "zod": "^3.24.1"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "^4.3.0",
+    "@types/node": "^20",
+    "@types/react": "^18",
+    "@types/react-dom": "^18",
+    "@types/three": "0.185.4",
+    "eslint": "^8",
+    "eslint-config-next": "14.2.32",
+    "postcss": "^8",
+    "prisma": "^6.19.0",
+    "tailwindcss": "^4.3.0",
+    "typescript": "^5"
+  }
+}

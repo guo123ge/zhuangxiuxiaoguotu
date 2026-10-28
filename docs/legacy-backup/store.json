@@ -1,0 +1,300 @@
+{
+  "projects": [
+    {
+      "id": "central-cloud-city",
+      "title": "武汉城建·中央云城",
+      "unitNo": "84",
+      "cover": "/samples/1.png",
+      "viewCount": 84,
+      "status": "published",
+      "brandName": "溜溜全景",
+      "createdAt": "2026-06-10T22:14:32.949Z",
+      "updatedAt": "2026-06-10T22:14:32.949Z",
+      "scenes": [
+        {
+          "id": "scene-1",
+          "projectId": "central-cloud-city",
+          "name": "客餐厅",
+          "panoramaUrl": "/samples/1.png",
+          "thumbnailUrl": "/samples/1.png",
+          "order": 1,
+          "initialYaw": 0,
+          "initialPitch": 0,
+          "hotspots": [
+            {
+              "id": "scene-1-next",
+              "sceneId": "scene-1",
+              "targetSceneId": "scene-2",
+              "yaw": 38,
+              "pitch": -3,
+              "label": "主卧",
+              "type": "scene"
+            },
+            {
+              "id": "scene-1-prev",
+              "sceneId": "scene-1",
+              "targetSceneId": "scene-9",
+              "yaw": -115,
+              "pitch": -6,
+              "label": "衣帽间 (2)",
+              "type": "scene"
+            }
+          ]
+        },
+        {
+          "id": "scene-2",
+          "projectId": "central-cloud-city",
+          "name": "主卧",
+          "panoramaUrl": "/samples/2.png",
+          "thumbnailUrl": "/samples/2.png",
+          "order": 2,
+          "initialYaw": 35,
+          "initialPitch": 0,
+          "hotspots": [
+            {
+              "id": "scene-2-next",
+              "sceneId": "scene-2",
+              "targetSceneId": "scene-3",
+              "yaw": -42,
+              "pitch": -3,
+              "label": "儿童房",
+              "type": "scene"
+            },
+            {
+              "id": "scene-2-prev",
+              "sceneId": "scene-2",
+              "targetSceneId": "scene-1",
+              "yaw": 128,
+              "pitch": -6,
+              "label": "客餐厅",
+              "type": "scene"
+            }
+          ]
+        },
+        {
+          "id": "scene-3",
+          "projectId": "central-cloud-city",
+          "name": "儿童房",
+          "panoramaUrl": "/samples/3.png",
+          "thumbnailUrl": "/samples/3.png",
+          "order": 3,
+          "initialYaw": 0,
+          "initialPitch": 0,
+          "hotspots": [
+            {
+              "id": "scene-3-next",
+              "sceneId": "scene-3",
+              "targetSceneId": "scene-4",
+              "yaw": 38,
+              "pitch": -3,
+              "label": "客卫",
+              "type": "scene"
+            },
+            {
+              "id": "scene-3-prev",
+              "sceneId": "scene-3",
+              "targetSceneId": "scene-2",
+              "yaw": -115,
+              "pitch": -6,
+              "label": "主卧",
+              "type": "scene"
+            }
+          ]
+        },
+        {
+          "id": "scene-4",
+          "projectId": "central-cloud-city",
+          "name": "客卫",
+          "panoramaUrl": "/samples/4.png",
+          "thumbnailUrl": "/samples/4.png",
+          "order": 4,
+          "initialYaw": 35,
+          "initialPitch": 0,
+          "hotspots": [
+            {
+              "id": "scene-4-next",
+              "sceneId": "scene-4",
+              "targetSceneId": "scene-5",
+              "yaw": -42,
+              "pitch": -3,
+              "label": "老人房",
+              "type": "scene"
+            },
+            {
+              "id": "scene-4-prev",
+              "sceneId": "scene-4",
+              "targetSceneId": "scene-3",
+              "yaw": 128,
+              "pitch": -6,
+              "label": "儿童房",
+              "type": "scene"
+            }
+          ]
+        },
+        {
+          "id": "scene-5",
+          "projectId": "central-cloud-city",
+          "name": "老人房",
+          "panoramaUrl": "/samples/5.png",
+          "thumbnailUrl": "/samples/5.png",
+          "order": 5,
+          "initialYaw": 0,
+          "initialPitch": 0,
+          "hotspots": [
+            {
+              "id": "scene-5-next",
+              "sceneId": "scene-5",
+              "targetSceneId": "scene-6",
+              "yaw": 38,
+              "pitch": -3,
+              "label": "书房",
+              "type": "scene"
+            },
+            {
+              "id": "scene-5-prev",
+              "sceneId": "scene-5",
+              "targetSceneId": "scene-4",
+              "yaw": -115,
+              "pitch": -6,
+              "label": "客卫",
+              "type": "scene"
+            }
+          ]
+        },
+        {
+          "id": "scene-6",
+          "projectId": "central-cloud-city",
+          "name": "书房",
+          "panoramaUrl": "/samples/6.png",
+          "thumbnailUrl": "/samples/6.png",
+          "order": 6,
+          "initialYaw": 35,
+          "initialPitch": 0,
+          "hotspots": [
+            {
+              "id": "scene-6-next",
+              "sceneId": "scene-6",
+              "targetSceneId": "scene-7",
+              "yaw": -42,
+              "pitch": -3,
+              "label": "卫生间",
+              "type": "scene"
+            },
+            {
+              "id": "scene-6-prev",
+              "sceneId": "scene-6",
+              "targetSceneId": "scene-5",
+              "yaw": 128,
+              "pitch": -6,
+              "label": "老人房",
+              "type": "scene"
+            }
+          ]
+        },
+        {
+          "id": "scene-7",
+          "projectId": "central-cloud-city",
+          "name": "卫生间",
+          "panoramaUrl": "/samples/7.png",
+          "thumbnailUrl": "/samples/7.png",
+          "order": 7,
+          "initialYaw": 0,
+          "initialPitch": 0,
+          "hotspots": [
+            {
+              "id": "scene-7-next",
+              "sceneId": "scene-7",
+              "targetSceneId": "scene-8",
+              "yaw": 38,
+              "pitch": -3,
+              "label": "主卫",
+              "type": "scene"
+            },
+            {
+              "id": "scene-7-prev",
+              "sceneId": "scene-7",
+              "targetSceneId": "scene-6",
+              "yaw": -115,
+              "pitch": -6,
+              "label": "书房",
+              "type": "scene"
+            }
+          ]
+        },
+        {
+          "id": "scene-8",
+          "projectId": "central-cloud-city",
+          "name": "主卫",
+          "panoramaUrl": "/samples/8.png",
+          "thumbnailUrl": "/samples/8.png",
+          "order": 8,
+          "initialYaw": 35,
+          "initialPitch": 0,
+          "hotspots": [
+            {
+              "id": "scene-8-next",
+              "sceneId": "scene-8",
+              "targetSceneId": "scene-9",
+              "yaw": -42,
+              "pitch": -3,
+              "label": "衣帽间 (2)",
+              "type": "scene"
+            },
+            {
+              "id": "scene-8-prev",
+              "sceneId": "scene-8",
+              "targetSceneId": "scene-7",
+              "yaw": 128,
+              "pitch": -6,
+              "label": "卫生间",
+              "type": "scene"
+            }
+          ]
+        },
+        {
+          "id": "scene-9",
+          "projectId": "central-cloud-city",
+          "name": "衣帽间 (2)",
+          "panoramaUrl": "/samples/9.png",
+          "thumbnailUrl": "/samples/9.png",
+          "order": 9,
+          "initialYaw": 0,
+          "initialPitch": 0,
+          "hotspots": [
+            {
+              "id": "scene-9-next",
+              "sceneId": "scene-9",
+              "targetSceneId": "scene-1",
+              "yaw": 38,
+              "pitch": -3,
+              "label": "客餐厅",
+              "type": "scene"
+            },
+            {
+              "id": "scene-9-prev",
+              "sceneId": "scene-9",
+              "targetSceneId": "scene-8",
+              "yaw": -115,
+              "pitch": -6,
+              "label": "主卫",
+              "type": "scene"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "project-mq90dy79-5rkl0z",
+      "title": "中粮青云府",
+      "unitNo": "",
+      "brandName": "全景装修",
+      "cover": "",
+      "viewCount": 0,
+      "status": "draft",
+      "createdAt": "2026-06-11T04:39:57.285Z",
+      "updatedAt": "2026-06-11T04:39:57.285Z",
+      "scenes": []
+    }
+  ],
+  "assets": []
+}

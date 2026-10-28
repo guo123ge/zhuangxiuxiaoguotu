@@ -1,0 +1,535 @@
+// 户型图智能分析与三维可视化系统 — 数据模型
+// 约定：
+//   1. SQLite 不支持原生枚举，所有枚举字段以 String 存储，值域由 src/lib/enums.ts 的 TS 联合类型保证。
+//   2. SQLite 上 JSON 一律以 String 存储（Prisma 对 SQLite 的 Json 查询能力有限）。
+//   3. 长度单位统一为毫米（mm），面积单位为平方米（m2）。
+//   4. 3D 世界坐标仅在渲染层转换为米（m），数据库内不存世界坐标。
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// ============ 项目 ============
+
+model Project {
+  id             String   @id @default(cuid())
+  title          String
+  unitNo         String   @default("")
+  clientName     String   @default("")
+  brandName      String   @default("全景装修")
+  address        String   @default("")
+  designer       String   @default("")
+  status         String   @default("DRAFT") // DRAFT | PUBLISHED | ARCHIVED
+  workflowStatus String   @default("CREATED") // CREATED|FLOORPLAN_UPLOADED|PARSED|CONFIRMED|MODELED|DESIGNED|TOUR_READY|PUBLISHED
+  designBrief    String   @default("")
+  floorHeightMm  Int      @default(2800)
+  selectedStyleId  String?
+  selectedSchemeId String?
+  coverUrl       String?
+  viewCount      Int      @default(0)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  floorplans   FloorplanAsset[]
+  rooms        DetectedRoom[]
+  walls        WallSegment[]
+  openings     Opening[]
+  elements     SpaceElement[]
+  schemes      DesignScheme[]
+  routes       TourRoute[]
+  versions     DesignVersion[]
+  references   ReferenceImage[]
+  jobs         GenerationJob[]
+  clientLinks  ClientShareLink[]
+  feedbacks    ClientFeedback[]
+  approvals    ClientApproval[]
+  proposals    AiChangeProposal[]
+  quantities   QuantityLine[]
+  budgets      BudgetItem[]
+  recognitions RecognitionItem[]
+  adjacencies  RoomAdjacency[]
+  styles       DesignStyle[]
+}
+
+// ============ 模块 1：户型图与识别 ============
+
+model FloorplanAsset {
+  id           String   @id @default(cuid())
+  projectId    String
+  project      Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  fileType     String // IMAGE | PDF | DXF
+  pageKind     String   @default("UNKNOWN") // BLUEPRINT | MARKETING | UNKNOWN
+  originalName String
+  fileUrl      String
+  previewUrl   String?
+  overlayUrl   String? // 识别结果叠加图（校验用）
+  maskUrl      String? // 调试掩膜图
+  size         Int
+  width        Int?
+  height       Int?
+  pageCount    Int?
+  selectedPage Int?
+
+  // 比例标定：mmPerPx = 每像素代表的毫米数
+  scaleMmPerPx     Float?
+  scaleSource      String? // VLM_DIM | MODULE_SEARCH | DPI_META | MANUAL
+  scaleConfidence  Float?
+  dimensionChainsJson String @default("[]")
+
+  parseJson    String   @default("{}") // FloorplanParseResult 全量快照
+  status       String   @default("UPLOADED") // UPLOADED | DETECTING | SUCCEEDED | FAILED
+  reviewStatus String   @default("PENDING") // PENDING | NEEDS_REVIEW | CONFIRMED
+  errorMessage String?
+  suggestionsJson String @default("[]")
+  createdAt    DateTime @default(now())
+
+  @@index([projectId])
+}
+
+model WallSegment {
+  id          String   @id @default(cuid())
+  projectId   String
+  project     Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  // 中线端点，图纸坐标（mm，原点为图纸左上角，y 向下）
+  axMm        Float
+  ayMm        Float
+  bxMm        Float
+  byMm        Float
+  thicknessMm Int      @default(120)
+  heightMm    Int      @default(2800)
+  isExternal  Boolean  @default(false)
+  isVirtual   Boolean  @default(false) // 开口处补的虚墙：不渲染、不计量
+  confidence  Float    @default(0.8)
+  source      String   @default("CV") // CV | VLM | MANUAL
+  order       Int      @default(0)
+
+  openings Opening[]
+
+  @@index([projectId])
+}
+
+model Opening {
+  id          String   @id @default(cuid())
+  projectId   String
+  project     Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  wallId      String?
+  wall        WallSegment? @relation(fields: [wallId], references: [id], onDelete: SetNull)
+  kind        String // DOOR | WINDOW | ARCH
+  offsetMm    Float // 沿墙中线的中心偏移
+  widthMm     Int
+  sillMm      Int      @default(0) // 窗台 / 门槛高
+  heightMm    Int      @default(2100)
+  isEntryDoor Boolean  @default(false) // 入户门：模块 4 路径起点
+  // 门弧证据：{ centerMm:{x,y}, radiusMm, spanDeg, dir }
+  swingJson   String   @default("{}")
+  confidence  Float    @default(0.8)
+  source      String   @default("CV")
+  order       Int      @default(0)
+
+  @@index([projectId])
+}
+
+model DetectedRoom {
+  id               String   @id @default(cuid())
+  projectId        String
+  project          Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  name             String
+  roomType         String   @default("OTHER") // LIVING_DINING|LIVING|DINING|KITCHEN|BATH|MASTER_BED|BED|CHILD_BED|ELDER_BED|STUDY|CLOAK|STORAGE|BALCONY|ENTRY|HALLWAY|MULTI|OTHER
+  polygonJson      String // [[x,y],...] mm
+  centroidJson     String   @default("{}")
+  areaM2           Float    @default(0)
+  perimeterMm      Float    @default(0)
+  heightMm         Int      @default(2800)
+  lengthMm         Float?
+  widthMm          Float?
+  externalEdgeRatio Float   @default(0)
+  orientation      String   @default("") // N|S|E|W|NE|NW|SE|SW
+  confidence       Float    @default(0.8)
+  typeScoresJson   String   @default("{}") // { MASTER_BED:0.62, BED:0.21, ... }
+  needsReview      Boolean  @default(false)
+  isConfirmed      Boolean  @default(false)
+  source           String   @default("FUSED") // VLM | CV | FUSED | MANUAL
+  order            Int      @default(0)
+
+  elements  SpaceElement[]
+  scenes    TourScene[]
+  waypoints Waypoint[]
+  feedbacks ClientFeedback[]
+
+  @@index([projectId])
+}
+
+model RoomAdjacency {
+  id             String  @id @default(cuid())
+  projectId      String
+  project        Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  aRoomId        String
+  bRoomId        String
+  viaOpeningId   String? // null = 仅共墙，不可通行
+  kind           String  @default("WALL") // DOOR | ARCH | WALL
+  sharedLengthMm Float   @default(0)
+
+  @@index([projectId])
+}
+
+model RecognitionItem {
+  id            String   @id @default(cuid())
+  projectId     String
+  project       Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  target        String // SCALE | ROOM_TYPE | WALL | OPENING | DIMENSION
+  targetId      String?
+  field         String
+  vlmValue      String?
+  cvValue       String?
+  geometryValue String?
+  adoptedValue  String
+  confidence    Float
+  source        String // OCR | VLM | CV | DXF | MANUAL
+  bboxJson      String   @default("{}")
+  conflictReason String  @default("")
+  revisedBy     String?
+  revisedAt     DateTime?
+  createdAt     DateTime @default(now())
+
+  @@index([projectId])
+}
+
+// ============ 模块 2/3：对象与四层结构 ============
+
+model SpaceElement {
+  id          String   @id @default(cuid())
+  projectId   String
+  project     Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  roomId      String?
+  room        DetectedRoom? @relation(fields: [roomId], references: [id], onDelete: SetNull)
+  kind        String // WALL|FLOOR|CEILING|SKIRTING|DOOR|WINDOW|CABINET|FURNITURE|LIGHT|SANITARY|PIER
+  name        String
+  positionJson String  @default("{}") // { xMm, yMm, zMm }
+  sizeJson    String   @default("{}") // { lMm, wMm, hMm }
+  rotationDeg Float    @default(0)
+  stableKey   String // 稳定 ID：拾取 / 工程量 / AI 变更 用
+  visible     Boolean  @default(true)
+  order       Int      @default(0)
+
+  layers ElementLayer[]
+
+  @@unique([projectId, stableKey])
+  @@index([projectId])
+}
+
+model ElementLayer {
+  id          String   @id @default(cuid())
+  elementId   String
+  element     SpaceElement @relation(fields: [elementId], references: [id], onDelete: Cascade)
+  kind        String // STRUCTURE | BASE | DECOR | FINISH
+  materialId  String?
+  colorHex    String   @default("#EFEAE1")
+  thicknessMm Int      @default(0)
+  textureUrl  String?
+  tileSizeUMm Int      @default(800)
+  tileSizeVMm Int      @default(800)
+  pattern     String   @default("PLAIN") // PLAIN|TILE|PLANK|HERRINGBONE|BRICK
+  groutMm     Int      @default(2)
+  roughness   Float?
+  metallic    Float?
+  source      String   @default("STYLE") // STYLE | MANUAL | AI
+  override    Boolean  @default(false) // 手工改过 → 风格切换时跳过
+
+  @@index([elementId])
+}
+
+model Material {
+  id          String  @id
+  name        String
+  category    String // FLOOR|WALL|CEILING|CABINET|FABRIC|STONE|METAL|GLASS|PAINT
+  colorHex    String
+  roughness   Float   @default(0.8)
+  metallic    Float   @default(0)
+  textureUrl  String?
+  tileSizeUMm Int     @default(800)
+  tileSizeVMm Int     @default(800)
+  pattern     String  @default("TILE")
+  groutMm     Int     @default(2)
+  pricePerSqm Float   @default(0)
+  unit        String  @default("m2")
+  brand       String?
+  spec        String?
+  styleTagsJson String @default("[]")
+  isSystem    Boolean @default(true)
+  sortOrder   Int     @default(0)
+}
+
+model DesignStyle {
+  id                 String  @id
+  projectId          String?
+  project            Project? @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  name               String
+  summary            String  @default("")
+  keywords           String  @default("")
+  palette            String  @default("")
+  materials          String  @default("")
+  lighting           String  @default("")
+  negative           String  @default("")
+  roomTips           String  @default("")
+  // 结构化规则（驱动材质/颜色/家具/灯光联动）
+  paletteJson        String  @default("{}")
+  materialRulesJson  String  @default("[]")
+  colorRulesJson     String  @default("[]")
+  lightingJson       String  @default("{}")
+  furnitureRulesJson String  @default("[]")
+  sortOrder          Int     @default(0)
+  isSystem           Boolean @default(true)
+}
+
+model DesignScheme {
+  id         String   @id @default(cuid())
+  projectId  String
+  project    Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  name       String
+  styleId    String?
+  isPrimary  Boolean  @default(false)
+  order      Int      @default(0)
+  overlayJson String  @default("{}") // 参数覆盖集（含可选 geometryPatch）
+  previewUrl String?
+  createdAt  DateTime @default(now())
+
+  @@index([projectId])
+}
+
+// ============ 模块 4：漫游 ============
+
+model TourRoute {
+  id          String   @id @default(cuid())
+  projectId   String
+  project     Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  schemeId    String?
+  entryRoomId String?
+  waypointsJson String @default("[]")
+  pathJson       String @default("[]")
+  segmentsJson   String @default("[]")
+  paramsJson     String @default("{}")
+  createdAt   DateTime @default(now())
+
+  scenes TourScene[]
+  waypoints Waypoint[]
+
+  @@index([projectId])
+}
+
+model Waypoint {
+  id         String   @id @default(cuid())
+  routeId    String
+  route      TourRoute @relation(fields: [routeId], references: [id], onDelete: Cascade)
+  roomId     String?
+  room       DetectedRoom? @relation(fields: [roomId], references: [id], onDelete: SetNull)
+  xMm        Float
+  zMm        Float
+  yaw        Float    @default(0)
+  order      Int
+  label      String   @default("")
+  coverScore Float    @default(0)
+
+  scene TourScene?
+
+  @@index([routeId])
+}
+
+model TourScene {
+  id           String   @id @default(cuid())
+  projectId    String
+  routeId      String
+  route        TourRoute @relation(fields: [routeId], references: [id], onDelete: Cascade)
+  waypointId   String   @unique
+  waypoint     Waypoint @relation(fields: [waypointId], references: [id], onDelete: Cascade)
+  roomId       String?
+  room         DetectedRoom? @relation(fields: [roomId], references: [id], onDelete: SetNull)
+  name         String
+  panoramaUrl  String
+  thumbnailUrl String
+  mobileUrl    String?
+  width        Int      @default(4096)
+  height       Int      @default(2048)
+  initialYaw   Float    @default(0)
+  initialPitch Float    @default(0)
+  order        Int
+  hotspotsJson String   @default("[]")
+  createdAt    DateTime @default(now())
+
+  @@index([routeId])
+}
+
+// ============ 工程量 / 预算 / AI 变更 ============
+
+model QuantityLine {
+  id         String   @id @default(cuid())
+  projectId  String
+  project    Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  roomId     String?
+  category   String // WALL|FLOOR|CEILING|SKIRTING|DOOR|WINDOW|CABINET|PAINT|TILE|LIGHT|SANITARY
+  itemName   String
+  formulaJson String  @default("{}")
+  quantity   Float    @default(0)
+  unit       String // m2 | m | 个 | 套
+  createdAt  DateTime @default(now())
+
+  @@index([projectId])
+}
+
+model BudgetItem {
+  id              String  @id @default(cuid())
+  projectId       String
+  project         Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  quantityLineId  String?
+  name            String
+  unitPrice       Float   @default(0)
+  laborPrice      Float   @default(0)
+  wasteRate       Float   @default(0.05)
+  quantity        Float   @default(0)
+  unit            String  @default("m2")
+  amount          Float   @default(0)
+  priceLibVersion String  @default("v1")
+  createdAt       DateTime @default(now())
+
+  @@index([projectId])
+}
+
+model AiChangeProposal {
+  id                 String   @id @default(cuid())
+  projectId          String
+  project            Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  prompt             String
+  patchJson          String
+  affectedRoomIdsJson String  @default("[]")
+  beforeJson         String   @default("{}")
+  afterJson          String   @default("{}")
+  quantityDeltaJson  String   @default("{}")
+  status             String   @default("PROPOSED") // PROPOSED | APPLIED | REJECTED | UNDONE
+  createdAt          DateTime @default(now())
+  appliedAt          DateTime?
+
+  @@index([projectId])
+}
+
+// ============ 版本 / 任务 / 参考图 / 客户侧 ============
+
+model DesignVersion {
+  id            String   @id @default(cuid())
+  projectId     String
+  project       Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  versionNumber Int
+  label         String
+  coverUrl      String?
+  scenesJson    String   @default("[]")
+  createdAt     DateTime @default(now())
+
+  clientLinks ClientShareLink[]
+
+  @@unique([projectId, versionNumber])
+}
+
+model GenerationJob {
+  id           String   @id @default(cuid())
+  projectId    String
+  project      Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  kind         String // TOUR_RENDER | IMAGE | AI_PROPOSE
+  provider     String   @default("")
+  status       String   @default("PENDING") // PENDING|RUNNING|SUCCEEDED|FAILED
+  progress     Int      @default(0)
+  total        Int      @default(0)
+  errorMessage String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@index([projectId])
+}
+
+model ReferenceImage {
+  id           String   @id @default(cuid())
+  projectId    String
+  project      Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  originalName String
+  fileUrl      String
+  thumbnailUrl String?
+  kind         String   @default("USER") // MARKETING | USER | GENERATED
+  createdAt    DateTime @default(now())
+
+  @@index([projectId])
+}
+
+model ClientShareLink {
+  id             String   @id @default(cuid())
+  projectId      String
+  project        Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  versionId      String?
+  version        DesignVersion? @relation(fields: [versionId], references: [id], onDelete: SetNull)
+  tokenHash      String   @unique
+  accessCodeHash String?
+  expiresAt      DateTime?
+  revokedAt      DateTime?
+  viewCount      Int      @default(0)
+  createdAt      DateTime @default(now())
+
+  sessions ClientSession[]
+  feedbacks ClientFeedback[]
+  approvals ClientApproval[]
+
+  @@index([projectId])
+}
+
+model ClientSession {
+  id          String   @id @default(cuid())
+  shareLinkId String
+  shareLink   ClientShareLink @relation(fields: [shareLinkId], references: [id], onDelete: Cascade)
+  userAgent   String?
+  ip          String?
+  firstViewAt DateTime @default(now())
+  lastViewAt  DateTime @default(now())
+  viewCount   Int      @default(0)
+}
+
+model ClientFeedback {
+  id          String   @id @default(cuid())
+  projectId   String
+  project     Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  shareLinkId String?
+  shareLink   ClientShareLink? @relation(fields: [shareLinkId], references: [id], onDelete: SetNull)
+  roomId      String?
+  room        DetectedRoom? @relation(fields: [roomId], references: [id], onDelete: SetNull)
+  type        String   @default("NEED_CHANGE") // LIKE|NEED_CHANGE|NEED_CONFIRM|MATERIAL|FUNCTION|BUDGET
+  status      String   @default("OPEN") // OPEN | HANDLED
+  content     String
+  createdAt   DateTime @default(now())
+
+  attachments ClientFeedbackAttachment[]
+
+  @@index([projectId])
+}
+
+model ClientFeedbackAttachment {
+  id        String @id @default(cuid())
+  feedbackId String
+  feedback  ClientFeedback @relation(fields: [feedbackId], references: [id], onDelete: Cascade)
+  fileUrl   String
+  mimeType  String
+  size      Int
+}
+
+model ClientApproval {
+  id            String   @id @default(cuid())
+  projectId     String
+  project       Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  shareLinkId   String?
+  shareLink     ClientShareLink? @relation(fields: [shareLinkId], references: [id], onDelete: SetNull)
+  versionId     String?
+  roomId        String?
+  scope         String   @default("ALL") // ALL | ROOM
+  decision      String // APPROVED | NEED_CHANGE | UNDECIDED
+  clientName    String   @default("")
+  clientContact String   @default("")
+  createdAt     DateTime @default(now())
+}
