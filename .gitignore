@@ -12,3 +12,5 @@ prisma/data/*.db-journal
 public/uploads/*
 !public/uploads/.gitkeep
 .DS_Store
+tsconfig.tsbuildinfo
+docs/legacy-backup/*.db
