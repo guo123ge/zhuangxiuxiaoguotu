@@ -9,6 +9,7 @@ build
 data/ai-config.json
 prisma/data/*.db
 prisma/data/*.db-journal
+!prisma/data/app.db
 public/uploads/*
 !public/uploads/.gitkeep
 .DS_Store
