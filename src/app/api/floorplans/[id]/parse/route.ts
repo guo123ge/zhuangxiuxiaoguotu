@@ -110,6 +110,7 @@ export async function POST(
       .join("");
     const svg = `<svg width="${json.imageWidth}" height="${json.imageHeight}" xmlns="http://www.w3.org/2000/svg">${polysSvg}</svg>`;
     const overlayPath = path.join(UPLOADS_DIR, asset.projectId, overlayFile);
+    await fs.mkdir(path.dirname(overlayPath), { recursive: true });
     await sharp(bytes)
       .composite([{ input: Buffer.from(svg), top: 0, left: 0 }])
       .png()
