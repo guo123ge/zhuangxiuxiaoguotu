@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { Sparkles, X, Eye, EyeOff, Loader2, CheckCircle2, AlertCircle } from "lucide-react";
 import { fitLabel } from "@/lib/ai/models";
+import CloudAiChat from "./CloudAiChat";
 
 type ModelInfo = {
   id: string;
@@ -116,6 +117,9 @@ export default function AiAssistant() {
         </div>
 
         <div className="flex-1 overflow-y-auto px-5 py-4">
+          {/* 云 AI 对话（免密钥） */}
+          <CloudAiChat />
+
           {/* 当前状态 */}
           {status && (
             <div className="mb-4 rounded-lg border border-slate-200 bg-slate-50 p-3">
