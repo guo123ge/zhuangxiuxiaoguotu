@@ -33,6 +33,16 @@ const SAMPLES = [
   { id: "yao-b", name: "雲曜B 116㎡" },
 ];
 
+/** 安全解析 JSON：响应为 HTML（如超时/网关错误）时返回空对象，避免 res.json() 抛 "Unexpected token" */
+async function readJson(res: Response): Promise<any> {
+  const text = await res.text();
+  try {
+    return text ? JSON.parse(text) : {};
+  } catch {
+    return {};
+  }
+}
+
 /** 把后端全量快照转换为编辑器所需的最小结构 */
 function toEditorJson(fp: any): EditorJson | null {
   try {
@@ -83,7 +93,7 @@ export default function ParsePage() {
   const refresh = useCallback(async () => {
     const res = await fetch(`/api/projects/${projectId}`);
     if (!res.ok) return;
-    const { project } = await res.json();
+    const { project } = await readJson(res);
     setAssets(project.floorplans);
   }, [projectId]);
 
@@ -110,7 +120,7 @@ export default function ParsePage() {
       const fd = new FormData();
       fd.append("file", file);
       const res = await fetch(`/api/projects/${projectId}/floorplans`, { method: "POST", body: fd });
-      const data = await res.json();
+      const data = await readJson(res);
       if (!res.ok) throw new Error(data.error || "上传失败");
       await refresh();
     } catch (e) {
@@ -129,7 +139,7 @@ export default function ParsePage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ sampleId }),
       });
-      const data = await res.json();
+      const data = await readJson(res);
       if (!res.ok) throw new Error(data.error || "加载样本失败");
       await refresh();
       if (data.asset?.id) setActiveId(data.asset.id);
@@ -149,7 +159,7 @@ export default function ParsePage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ useVlm: true }),
       });
-      const data = await res.json();
+      const data = await readJson(res);
       if (!res.ok) throw new Error(data.error || "识别失败");
       await refresh();
     } catch (e) {
@@ -164,7 +174,7 @@ export default function ParsePage() {
     setBusy("confirming");
     try {
       const res = await fetch(`/api/floorplans/${active.id}/confirm`, { method: "POST" });
-      const data = await res.json();
+      const data = await readJson(res);
       if (!res.ok) throw new Error(data.error || "确认失败");
       router.push(`/projects/${projectId}/model`);
     } catch (e) {
@@ -202,7 +212,7 @@ export default function ParsePage() {
           reviewStatus,
         }),
       });
-      const data = await res.json();
+      const data = await readJson(res);
       if (!res.ok) throw new Error(data.error || "保存失败");
       await refresh();
       if (reviewStatus === "CONFIRMED") {

@@ -110,8 +110,11 @@ function extractJsonObject(text: string): string | null {
 async function callChatJson(
   p: ActiveProvider,
   payload: { messages: unknown[]; temperature: number; max_tokens: number },
+  timeoutMs = 30000,
 ): Promise<unknown | null> {
   for (let attempt = 0; attempt < 2; attempt++) {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
     try {
       const res = await fetch(`${p.model.baseURL}/chat/completions`, {
         method: "POST",
@@ -124,6 +127,7 @@ async function callChatJson(
           ...payload,
           ...(attempt === 0 ? { response_format: { type: "json_object" } } : {}),
         }),
+        signal: controller.signal,
       });
 
       if (!res.ok) {
@@ -151,9 +155,13 @@ async function callChatJson(
         if (attempt === 0) continue;
         return null;
       }
-    } catch {
+    } catch (e) {
+      // 超时（AbortError）直接放弃，不再重试，避免慢模型把识别拖垮
+      if (e instanceof Error && e.name === "AbortError") return null;
       if (attempt === 0) continue;
       return null;
+    } finally {
+      clearTimeout(timer);
     }
   }
   return null;
@@ -187,11 +195,15 @@ export async function visionJson<T>(
     ],
   });
 
-  const parsed = await callChatJson(p, {
-    messages,
-    temperature: 0,
-    max_tokens: opts.maxTokens ?? 4000,
-  });
+  const parsed = await callChatJson(
+    p,
+    {
+      messages,
+      temperature: 0,
+      max_tokens: opts.maxTokens ?? 4000,
+    },
+    12000, // 视觉识别 12s 超时：慢模型直接放弃，回退本地 CV
+  );
   if (parsed === null) return null;
   const validated = opts.schema.safeParse(parsed);
   if (!validated.success) return null;
