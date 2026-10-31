@@ -157,28 +157,37 @@ export default function TourViewer({ json, styleId = "modern-minimal", projectId
   const renderMarkers = (idx: number) => {
     const markers = markersRef.current;
     if (!markers) return;
-    markers.clearMarkers();
-    const n = panos.length;
-    // 前一/后一各一个热点，末点只有回退
-    const targets = [
-      { dir: -1, label: "← 上一处" },
-      { dir: 1, label: "下一处 →" },
-    ];
-    for (const t of targets) {
-      const ni = (idx + t.dir + n) % n;
-      if (ni === idx) continue;
-      const p = panos[idx];
-      const yaw = t.dir > 0 ? p.yawToNext : p.yawToNext + Math.PI;
-      const pitch = 0;
-      markers.addMarker({
-        id: `nav-${ni}`,
-        position: { yaw: `${((yaw * 180) / Math.PI).toFixed(1)}deg`, pitch: `${pitch}deg` },
-        html: `<button class="vr-hotspot" type="button"><span></span>${t.label}</button>`,
-        size: { width: 132, height: 44 },
-        anchor: "center center",
-        tooltip: panos[ni].wp.label,
-        data: { ni },
-      });
+    try {
+      markers.clearMarkers();
+      const n = panos.length;
+      const seen = new Set<string>();
+      // 前一/后一各一个热点，末点只有回退
+      const targets = [
+        { dir: -1, label: "← 上一处" },
+        { dir: 1, label: "下一处 →" },
+      ];
+      for (const t of targets) {
+        const ni = (idx + t.dir + n) % n;
+        if (ni === idx) continue;
+        const id = `nav-${ni}`;
+        // 去重：路径仅 2 站时「上一处/下一处」指向同一站，避免重复 id 触发 "marker already exists"
+        if (seen.has(id)) continue;
+        seen.add(id);
+        const p = panos[idx];
+        const yaw = t.dir > 0 ? p.yawToNext : p.yawToNext + Math.PI;
+        const pitch = 0;
+        markers.addMarker({
+          id,
+          position: { yaw: `${((yaw * 180) / Math.PI).toFixed(1)}deg`, pitch: `${pitch}deg` },
+          html: `<button class="vr-hotspot" type="button"><span></span>${t.label}</button>`,
+          size: { width: 132, height: 44 },
+          anchor: "center center",
+          tooltip: panos[ni].wp.label,
+          data: { ni },
+        });
+      }
+    } catch (e) {
+      console.error("[tour] 渲染热点失败:", (e as Error).message);
     }
   };
 
