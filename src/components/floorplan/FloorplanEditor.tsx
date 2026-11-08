@@ -10,9 +10,14 @@
  *
  * 坐标：SVG viewBox 取图像自然像素 (W×H)，mm = px × mmPerPx，故叠加层与
  * 图像逐像素对齐；拖拽时用 getScreenCTM 反算，避免缩放/letterbox 误差。
+ *
+ * 视觉：viewBox 是原始图像像素但被缩放到屏幕显示，因此所有描边/字号/把手
+ * 尺寸都乘以 k = 图像自然宽度 / 实际渲染宽度，保证屏幕上恒定可读、可点。
  */
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Lock, Unlock, Plus, Trash2, Save, CheckCircle2, SquarePlus, DoorOpen } from "lucide-react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { Lock, Unlock, Trash2, Save, CheckCircle2, SquarePlus, DoorOpen } from "lucide-react";
+import { Button, Spinner } from "@/components/ui";
+import { ROOM_TYPE_OPTIONS, canonicalRoomType } from "@/lib/roomType";
 
 export type Pt = [number, number];
 
@@ -46,19 +51,6 @@ export type EditorJson = {
   imageWidth?: number;
   imageHeight?: number;
 };
-
-const ROOM_TYPES: [string, string][] = [
-  ["LIVING_DINING", "客餐厅"], ["LIVING", "客厅"], ["DINING", "餐厅"],
-  ["KITCHEN", "厨房"], ["BATH", "卫生间"], ["MASTER_BED", "主卧"],
-  ["BED", "次卧"], ["CHILD_BED", "儿童房"], ["ELDER_BED", "老人房"],
-  ["STUDY", "书房"], ["CLOAK", "衣帽间"], ["STORAGE", "储藏间"],
-  ["BALCONY", "阳台"], ["ENTRY", "玄关"], ["HALLWAY", "走道"],
-  ["MULTI", "多功能房"], ["OTHER", "其他"],
-];
-
-const OPENING_KINDS: [EditorOpening["kind"], string][] = [
-  ["door", "门"], ["open", "开口"], ["window", "窗"], ["entrance", "入户门"],
-];
 
 type Tool = "select" | "addRoom" | "addOpening";
 
@@ -106,7 +98,7 @@ function toMm(clientX: number, clientY: number, svg: SVGSVGElement, mmPerPx: num
   return [loc.x * mmPerPx, loc.y * mmPerPx];
 }
 
-const COLORS = ["#8b5cf6", "#0ea5e9", "#10b981", "#f59e0b", "#ef4444", "#ec4899", "#6366f1", "#14b8a6"];
+const COLORS = ["#8b5cf6", "#06b6d4", "#10b981", "#f59e0b", "#ef4444", "#ec4899", "#6366f1", "#14b8a6"];
 
 export default function FloorplanEditor({
   imageUrl,
@@ -128,8 +120,10 @@ export default function FloorplanEditor({
     w: initialJson.imageWidth ?? 1000,
     h: initialJson.imageHeight ?? 1000,
   });
+  const [renderW, setRenderW] = useState(0);
 
   const svgRef = useRef<SVGSVGElement | null>(null);
+  const imgRef = useRef<HTMLImageElement | null>(null);
   const dragRef = useRef<{ roomId: string; vi: number } | { opId: string } | null>(null);
   const roomRectRef = useRef<{ start: Pt; cur: Pt } | null>(null);
   const previewRect = useRef<{ start: Pt; cur: Pt } | null>(null);
@@ -144,7 +138,19 @@ export default function FloorplanEditor({
     setTool("select");
   }, [initialJson]);
 
+  // 测量底图实际渲染宽度，用于把屏幕尺寸反算成 viewBox 坐标
+  useEffect(() => {
+    const el = imgRef.current;
+    if (!el) return;
+    const update = () => setRenderW(el.getBoundingClientRect().width || 0);
+    update();
+    const ro = new ResizeObserver(update);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [imageUrl]);
+
   const mmPerPx = draft.mmPerPx || 1;
+  const k = renderW > 0 && nat.w > 0 ? Math.max(0.4, nat.w / renderW) : 2.5;
 
   const toPx = useCallback((m: Pt): Pt => [m[0] / mmPerPx, m[1] / mmPerPx], [mmPerPx]);
 
@@ -263,14 +269,16 @@ export default function FloorplanEditor({
   const viewBox = `0 0 ${nat.w} ${nat.h}`;
 
   return (
-    <div className="flex h-full">
+    <div className="flex h-full flex-col md:flex-row">
       {/* 左：图纸 + 矢量编辑层 */}
-      <div className="relative flex-1 overflow-auto bg-[#0a0f1e] p-4">
+      <div className="relative min-h-0 flex-1 overflow-auto bg-canvas-alt p-4">
         <div className="relative mx-auto h-fit w-fit">
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
+            ref={imgRef}
             src={imageUrl}
-            alt="户型图"
+            alt="户型图识别结果叠加图"
+            loading="lazy"
             className="block w-full max-w-[820px] select-none"
             draggable={false}
             onLoad={(e) => {
@@ -296,9 +304,9 @@ export default function FloorplanEditor({
                 <g key={r.id}>
                   <polygon
                     points={pts}
-                    fill={selected ? color : `${color}22`}
+                    fill={selected ? `${color}66` : `${color}40`}
                     stroke={color}
-                    strokeWidth={selected ? 3 : 2}
+                    strokeWidth={(selected ? 3 : 2) * k}
                     style={{ cursor: editing ? "pointer" : "default" }}
                     onPointerDown={(e) => { if (editing) { e.stopPropagation(); setSelRoom(r.id); setSelOpening(null); } }}
                   />
@@ -308,18 +316,30 @@ export default function FloorplanEditor({
                     return (
                       <circle
                         key={vi}
-                        cx={x} cy={y} r={5}
-                        fill="#fff" stroke={color} strokeWidth={2}
+                        cx={x} cy={y} r={(selected ? 7 : 6) * k}
+                        fill="#fff" stroke={color} strokeWidth={2 * k}
+                        className="transition-opacity hover:opacity-75"
                         style={{ cursor: "grab" }}
                         onPointerDown={(e) => onVertexDown(e, r.id, vi)}
                       />
                     );
                   })}
-                  {/* 房间名标签 */}
+                  {/* 房间名标签：描边兜底保证在任意底图上可读 */}
                   {(() => {
                     const [cx, cy] = toPx(r.centroidMm);
                     return (
-                      <text x={cx} y={cy} textAnchor="middle" fontSize={14} fill="#ffffff" fontWeight={600} style={{ pointerEvents: "none", textShadow: "0 1px 3px rgba(0,0,0,0.6)" }}>
+                      <text
+                        x={cx} y={cy}
+                        textAnchor="middle"
+                        dominantBaseline="middle"
+                        fontSize={12 * k}
+                        fill="#ffffff"
+                        fontWeight={600}
+                        stroke="rgba(0,0,0,0.7)"
+                        strokeWidth={3 * k}
+                        paintOrder="stroke"
+                        style={{ pointerEvents: "none" }}
+                      >
                         {r.name}
                       </text>
                     );
@@ -332,18 +352,19 @@ export default function FloorplanEditor({
             {draft.openings.map((o) => {
               const [x, y] = toPx(o.centerMm);
               const selected = selOpening === o.id;
-              const color = o.kind === "window" ? "#0ea5e9" : o.kind === "entrance" ? "#10b981" : "#f59e0b";
+              const color = o.kind === "window" ? "#06b6d4" : o.kind === "entrance" ? "#10b981" : "#f59e0b";
+              const half = 9 * k;
               return (
                 <g key={o.id}>
                   <rect
-                    x={x - 9} y={y - 9} width={18} height={18}
+                    x={x - half} y={y - half} width={half * 2} height={half * 2}
                     fill={selected ? color : `${color}cc`}
-                    stroke="#fff" strokeWidth={2}
+                    stroke="#fff" strokeWidth={2 * k}
                     style={{ cursor: editing ? "move" : "default" }}
                     onPointerDown={(e) => onOpeningDown(e, o.id)}
                   />
-                  {editing && (
-                    <circle cx={x} cy={y} r={13} fill="none" stroke={color} strokeWidth={1.5} strokeDasharray="3 3" style={{ pointerEvents: "none" }} />
+                  {editing && selected && (
+                    <circle cx={x} cy={y} r={13 * k} fill="none" stroke={color} strokeWidth={1.5 * k} strokeDasharray={`${3 * k} ${3 * k}`} style={{ pointerEvents: "none" }} />
                   )}
                 </g>
               );
@@ -354,7 +375,7 @@ export default function FloorplanEditor({
               (() => {
                 const [x0, y0] = toPx(preview.start);
                 const [x1, y1] = toPx(preview.cur);
-                return <rect x={Math.min(x0, x1)} y={Math.min(y0, y1)} width={Math.abs(x1 - x0)} height={Math.abs(y1 - y0)} fill="#8b5cf633" stroke="#8b5cf6" strokeWidth={2} strokeDasharray="4 4" style={{ pointerEvents: "none" }} />;
+                return <rect x={Math.min(x0, x1)} y={Math.min(y0, y1)} width={Math.abs(x1 - x0)} height={Math.abs(y1 - y0)} fill="#8b5cf633" stroke="#8b5cf6" strokeWidth={2 * k} strokeDasharray={`${4 * k} ${4 * k}`} style={{ pointerEvents: "none" }} />;
               })()
             )}
           </svg>
@@ -363,41 +384,38 @@ export default function FloorplanEditor({
         {/* 顶部权限/工具栏 */}
         <div className="sticky top-0 z-10 mb-2 flex flex-wrap items-center gap-2 rounded-xl border border-white/[0.06] bg-sidebar/80 p-2 backdrop-blur-sm">
           {!editing ? (
-            <button
-              onClick={() => setEditing(true)}
-              className="flex items-center gap-1.5 rounded-md bg-violet-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-violet-700"
-            >
-              <Unlock className="h-3.5 w-3.5" /> 进入编辑（手动修正）
-            </button>
+            <Button size="sm" onClick={() => setEditing(true)}>
+              <Unlock className="h-3.5 w-3.5" aria-hidden="true" /> 进入编辑（手动修正）
+            </Button>
           ) : (
             <>
-              <button
-                onClick={() => { setEditing(false); setTool("select"); }}
-                className="flex items-center gap-1.5 rounded-lg bg-white/10 px-3 py-1.5 text-xs font-medium text-white hover:bg-white/16"
-              >
-                <Lock className="h-3.5 w-3.5" /> 锁定
-              </button>
+              <Button size="sm" variant="secondary" onClick={() => { setEditing(false); setTool("select"); }}>
+                <Lock className="h-3.5 w-3.5" aria-hidden="true" /> 锁定
+              </Button>
               <div className="h-4 w-px bg-white/10" />
-              <button
+              <Button
+                size="sm"
+                variant={tool === "addRoom" ? "primary" : "ghost"}
                 onClick={() => setTool(tool === "addRoom" ? "select" : "addRoom")}
-                className={`flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium ${tool === "addRoom" ? "bg-primary/20 text-primary-light" : "bg-white/6 text-ink-mute hover:bg-white/[0.08] hover:text-ink-soft"}`}
               >
-                <SquarePlus className="h-3.5 w-3.5" /> 添加房间
-              </button>
-              <button
+                <SquarePlus className="h-3.5 w-3.5" aria-hidden="true" /> 添加房间
+              </Button>
+              <Button
+                size="sm"
+                variant={tool === "addOpening" ? "primary" : "ghost"}
                 onClick={() => setTool(tool === "addOpening" ? "select" : "addOpening")}
-                className={`flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium ${tool === "addOpening" ? "bg-primary/20 text-primary-light" : "bg-white/6 text-ink-mute hover:bg-white/[0.08] hover:text-ink-soft"}`}
               >
-                <DoorOpen className="h-3.5 w-3.5" /> 添加开口
-              </button>
-              <button
+                <DoorOpen className="h-3.5 w-3.5" aria-hidden="true" /> 添加开口
+              </Button>
+              <Button
+                size="sm"
+                variant="danger"
                 onClick={deleteSelected}
                 disabled={!selRoom && !selOpening}
-                className="flex items-center gap-1.5 rounded-lg bg-danger/15 px-2.5 py-1.5 text-xs font-medium text-red-300 hover:bg-danger/25 disabled:opacity-40"
               >
-                <Trash2 className="h-3.5 w-3.5" /> 删除选中
-              </button>
-              <span className="ml-auto text-xs text-ink-mute">
+                <Trash2 className="h-3.5 w-3.5" aria-hidden="true" /> 删除选中
+              </Button>
+              <span className="ml-auto text-xs text-ink-soft">
                 {tool === "addRoom" ? "在图上拖拽框选新房间" : tool === "addOpening" ? "在图上点击放置开口" : "拖拽顶点改形 · 点击选中后删除"}
               </span>
             </>
@@ -406,16 +424,16 @@ export default function FloorplanEditor({
       </div>
 
       {/* 右：房间清单 + 保存 */}
-      <div className="flex w-[300px] shrink-0 flex-col overflow-auto border-l border-white/[0.06] bg-sidebar/60 p-3">
+      <div className="flex w-full shrink-0 flex-col overflow-auto border-t border-white/[0.06] bg-sidebar/60 p-3 md:w-[300px] md:border-l md:border-t-0">
         <div className="mb-2 flex items-center justify-between">
-          <h2 className="text-sm font-semibold text-white">
+          <h2 className="text-sm font-semibold text-ink">
             房间清单 <span className="text-ink-mute">({draft.rooms.length})</span>
           </h2>
           {!editing && <span className="rounded bg-white/8 px-1.5 py-0.5 text-[10px] text-ink-mute">只读</span>}
         </div>
 
         <div className="flex-1 space-y-2">
-          {draft.rooms.length === 0 && <p className="text-xs text-ink-mute">暂无房间，可进入编辑后「添加房间」。</p>}
+          {draft.rooms.length === 0 && <p className="text-xs text-ink-soft">暂无房间，可进入编辑后「添加房间」。</p>}
           {draft.rooms.map((r) => {
             const selected = selRoom === r.id;
             return (
@@ -427,21 +445,24 @@ export default function FloorplanEditor({
                 <div className="mb-1 flex items-center justify-between gap-1">
                   <input
                     value={r.name}
+                    title={r.name}
                     disabled={!editing}
                     onChange={(e) => updateRoom(r.id, { name: e.target.value })}
                     onClick={(e) => e.stopPropagation()}
-                    className="w-24 rounded border border-transparent bg-transparent px-1 py-0.5 text-sm font-medium text-white focus:border-primary/50 focus:outline-none disabled:cursor-default"
+                    className="min-w-0 flex-1 rounded border border-transparent bg-transparent px-1 py-0.5 text-sm font-medium text-ink outline-none focus-visible:border-primary/60 focus-visible:ring-2 focus-visible:ring-primary/45 disabled:cursor-default"
                   />
-                  <span className="text-[11px] text-ink-mute">{r.areaM2.toFixed(1)}㎡</span>
+                  <span className="shrink-0 text-[11px] text-ink-mute">{r.areaM2.toFixed(1)}㎡</span>
                 </div>
                 <select
-                  value={r.type}
+                  // 选中态做归一化（CV 输出小写、VLM 输出大写枚举），
+                  // 但 draft 里的原始 type 保持不变，写回时不污染 parseJson。
+                  value={canonicalRoomType(r.type)}
                   disabled={!editing}
                   onChange={(e) => updateRoom(r.id, { type: e.target.value })}
                   onClick={(e) => e.stopPropagation()}
-                  className="w-full rounded border border-white/[0.08] bg-surface/80 px-1.5 py-1 text-xs text-ink focus:border-primary/50 focus:outline-none disabled:bg-surface/40 disabled:text-ink-mute"
+                  className="w-full rounded-lg border border-white/[0.08] bg-surface/80 px-1.5 py-1 text-xs text-ink outline-none focus-visible:border-primary/60 focus-visible:ring-2 focus-visible:ring-primary/45 disabled:bg-surface/40 disabled:text-ink-mute"
                 >
-                  {ROOM_TYPES.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+                  {ROOM_TYPE_OPTIONS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
                 </select>
               </div>
             );
@@ -449,21 +470,23 @@ export default function FloorplanEditor({
         </div>
 
         <div className="mt-3 space-y-2 border-t border-white/[0.05] pt-3">
-          <button
+          <Button
+            className="w-full"
             onClick={() => onSave(draft, "NEEDS_REVIEW")}
             disabled={saving || !editing}
-            className="flex w-full items-center justify-center gap-1.5 rounded-lg bg-gradient-to-r from-primary to-purple-500 px-3 py-2 text-sm font-medium text-white shadow-glow-purple hover:brightness-110 disabled:opacity-40"
           >
-            <Save className="h-4 w-4" /> 保存修正
-          </button>
-          <button
+            {saving ? <Spinner /> : <Save className="h-4 w-4" aria-hidden="true" />}
+            {saving ? "保存中…" : "保存修正"}
+          </Button>
+          <Button
+            className="w-full"
+            variant="secondary"
             onClick={() => onSave(draft, "CONFIRMED")}
             disabled={saving || !editing}
-            className="flex w-full items-center justify-center gap-1.5 rounded-lg border border-white/[0.08] bg-surface/80 px-3 py-2 text-sm font-medium text-ink hover:bg-surface-hi disabled:opacity-40"
           >
-            <CheckCircle2 className="h-4 w-4" /> 修正并确认
-          </button>
-          {editing && <p className="text-center text-[11px] text-ink-mute">修正并确认将直接通过复核，进入三维建模</p>}
+            <CheckCircle2 className="h-4 w-4" aria-hidden="true" /> 修正并确认
+          </Button>
+          {editing && <p className="text-center text-[11px] text-ink-soft">修正并确认将直接通过复核，进入三维建模</p>}
         </div>
       </div>
     </div>

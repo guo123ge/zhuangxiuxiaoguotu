@@ -1,9 +1,20 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { useParams } from "next/navigation";
 import ModelViewer from "@/components/model3d/ModelViewer";
 import TourViewer from "@/components/tour/TourViewer";
+import {
+  Button,
+  Card,
+  CardBody,
+  Badge,
+  EmptyState,
+  Notice,
+  Spinner,
+  inputCls,
+  Select,
+} from "@/components/ui";
 import type { FloorplanJson } from "@/lib/parse/pipeline";
 
 type ShareData = {
@@ -58,101 +69,129 @@ export default function SharePage() {
     try { return JSON.parse(primaryScheme.overlayJson); } catch { return undefined; }
   })();
 
+  let body: ReactNode;
   if (error) {
-    return <div className="flex min-h-screen items-center justify-center text-slate-500">{error}</div>;
-  }
-
-  if (locked) {
-    return (
-      <div className="flex min-h-screen items-center justify-center bg-slate-50">
-        <div className="w-80 rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
-          <h1 className="text-lg font-semibold text-slate-800">需要访问码</h1>
-          <p className="mt-1 text-sm text-slate-500">此方案受访问码保护，请输入设计师提供的访问码。</p>
-          <input
-            value={code}
-            onChange={(e) => setCode(e.target.value)}
-            placeholder="访问码"
-            className="mt-4 w-full rounded border border-slate-300 px-3 py-2 text-sm"
-          />
-          <button onClick={submitCode} className="mt-3 w-full rounded bg-violet-600 py-2 text-sm text-white hover:bg-violet-700">
-            进入查看
-          </button>
+    body = (
+      <div className="flex flex-1 items-center justify-center p-6">
+        <div className="w-full max-w-md">
+          <EmptyState title="暂无法查看方案" description={error} />
         </div>
       </div>
     );
-  }
+  } else if (locked) {
+    body = (
+      <div className="flex flex-1 items-center justify-center p-6">
+        <Card className="w-full max-w-sm">
+          <CardBody className="space-y-4 p-6">
+            <div>
+              <h1 className="text-lg font-semibold text-ink">需要访问码</h1>
+              <p className="mt-1 text-sm text-ink-mute">此方案受访问码保护，请输入设计师提供的访问码。</p>
+            </div>
+            <input
+              value={code}
+              onChange={(e) => setCode(e.target.value)}
+              placeholder="访问码"
+              className={inputCls}
+            />
+            <Button className="w-full" onClick={submitCode}>进入查看</Button>
+          </CardBody>
+        </Card>
+      </div>
+    );
+  } else if (!data) {
+    body = (
+      <div className="flex flex-1 items-center justify-center gap-2 text-sm text-ink-mute">
+        <Spinner label="加载中" /> 加载中…
+      </div>
+    );
+  } else {
+    body = (
+      <>
+        <div className="flex flex-wrap items-center gap-3 border-b border-border bg-surface/60 px-6 py-3">
+          <div className="min-w-0">
+            <h1 className="flex items-center gap-2 text-base font-semibold text-ink">
+              {data.project.title}
+              {data.project.unitNo && <Badge tone="neutral">{data.project.unitNo}</Badge>}
+            </h1>
+            <p className="mt-0.5 text-xs text-ink-mute">
+              {data.project.clientName ? `客户：${data.project.clientName} · ` : ""}设计师：{data.project.designer || "—"}
+            </p>
+          </div>
+          <div role="tablist" aria-label="查看方式" className="ml-auto flex gap-1 rounded-lg bg-white/[0.04] p-1">
+            {(["model", "tour"] as const).map((t) => (
+              <Button
+                key={t}
+                role="tab"
+                aria-selected={tab === t}
+                variant={tab === t ? "primary" : "ghost"}
+                size="sm"
+                onClick={() => setTab(t)}
+                className="min-w-[92px]"
+              >
+                {t === "model" ? "三维模型" : "全景漫游"}
+              </Button>
+            ))}
+          </div>
+        </div>
 
-  if (!data) {
-    return <div className="flex min-h-screen items-center justify-center text-slate-500">加载中…</div>;
+        <main className="min-h-0 flex-1 p-4">
+          {data.floorplan ? (
+            tab === "model" ? (
+              <ModelViewer json={data.floorplan} defaultStyleId={primaryScheme?.styleId ?? "modern-minimal"} overlay={overlay} />
+            ) : (
+              <TourViewer json={data.floorplan} styleId={primaryScheme?.styleId ?? "modern-minimal"} projectId={data.project.id} />
+            )
+          ) : (
+            <div className="flex h-full min-h-64 items-center justify-center">
+              <div className="w-full max-w-md">
+                <EmptyState title="暂无户型数据" description="该方案暂无户型数据，请稍后再来查看。" />
+              </div>
+            </div>
+          )}
+        </main>
+
+        <footer className="border-t border-border bg-surface/60 px-6 py-4">
+          <div className="mx-auto max-w-3xl">
+            <h2 className="text-sm font-semibold text-ink">反馈与确认</h2>
+            {sent && <Notice tone="success" className="mt-2 mb-3">已提交，设计师会尽快处理。</Notice>}
+            <div className="mt-2 flex flex-wrap items-center gap-2">
+              <div className="w-40 shrink-0">
+                <Select value={decision} onChange={(e) => setDecision(e.target.value)} aria-label="整体确认">
+                  <option value="">— 整体确认 —</option>
+                  <option value="APPROVED">确认通过</option>
+                  <option value="NEED_CHANGE">需要修改</option>
+                  <option value="UNDECIDED">暂不确定</option>
+                </Select>
+              </div>
+              <div className="min-w-0 flex-1">
+                <input
+                  value={feedback}
+                  onChange={(e) => setFeedback(e.target.value)}
+                  placeholder="补充意见（可选）"
+                  className={inputCls}
+                />
+              </div>
+              <Button
+                onClick={submitFeedback}
+                disabled={!feedback && !decision}
+              >
+                提交
+              </Button>
+            </div>
+          </div>
+        </footer>
+      </>
+    );
   }
 
   return (
-    <div className="flex min-h-screen flex-col bg-slate-50">
-      <header className="flex items-center gap-3 border-b border-slate-200 bg-white px-6 py-3">
-        <div>
-          <h1 className="text-base font-semibold text-slate-800">
-            {data.project.title} <span className="text-sm font-normal text-slate-400">{data.project.unitNo || ""}</span>
-          </h1>
-          <p className="text-xs text-slate-400">
-            {data.project.clientName ? `客户：${data.project.clientName} · ` : ""}设计师：{data.project.designer || "—"}
-          </p>
-        </div>
-        <div className="ml-auto flex gap-1">
-          {(["model", "tour"] as const).map((t) => (
-            <button
-              key={t}
-              onClick={() => setTab(t)}
-              className={`rounded px-3 py-1.5 text-sm ${tab === t ? "bg-violet-600 text-white" : "text-slate-600 hover:bg-slate-100"}`}
-            >
-              {t === "model" ? "三维模型" : "全景漫游"}
-            </button>
-          ))}
-        </div>
+    <div className="flex min-h-screen flex-col bg-canvas text-ink">
+      <header className="flex items-center gap-2.5 border-b border-border bg-sidebar/80 px-6 py-3 backdrop-blur-md">
+        <span aria-hidden="true" className="h-2.5 w-2.5 rounded-full bg-primary shadow-glow-purple" />
+        <span className="text-sm font-semibold tracking-tight text-ink">AuraDesign VR</span>
+        <span className="text-xs text-ink-mute">方案分享</span>
       </header>
-
-      <main className="min-h-0 flex-1 p-4">
-        {data.floorplan ? (
-          tab === "model" ? (
-            <ModelViewer json={data.floorplan} defaultStyleId={primaryScheme?.styleId ?? "modern-minimal"} overlay={overlay} />
-          ) : (
-            <TourViewer json={data.floorplan} styleId={primaryScheme?.styleId ?? "modern-minimal"} projectId={data.project.id} />
-          )
-        ) : (
-          <div className="flex h-64 items-center justify-center text-slate-400">该方案暂无户型数据</div>
-        )}
-      </main>
-
-      <footer className="border-t border-slate-200 bg-white px-6 py-4">
-        <div className="mx-auto max-w-3xl">
-          <h2 className="text-sm font-semibold text-slate-700">反馈与确认</h2>
-          {sent && <p className="mb-2 text-sm text-emerald-600">已提交，设计师会尽快处理。</p>}
-          <div className="flex flex-wrap gap-2">
-            <select
-              value={decision}
-              onChange={(e) => setDecision(e.target.value)}
-              className="rounded border border-slate-300 px-2 py-1.5 text-sm"
-            >
-              <option value="">— 整体确认 —</option>
-              <option value="APPROVED">确认通过</option>
-              <option value="NEED_CHANGE">需要修改</option>
-              <option value="UNDECIDED">暂不确定</option>
-            </select>
-            <input
-              value={feedback}
-              onChange={(e) => setFeedback(e.target.value)}
-              placeholder="补充意见（可选）"
-              className="min-w-0 flex-1 rounded border border-slate-300 px-3 py-1.5 text-sm"
-            />
-            <button
-              onClick={submitFeedback}
-              disabled={!feedback && !decision}
-              className="rounded bg-violet-600 px-4 py-1.5 text-sm text-white hover:bg-violet-700 disabled:opacity-40"
-            >
-              提交
-            </button>
-          </div>
-        </div>
-      </footer>
+      {body}
     </div>
   );
 }

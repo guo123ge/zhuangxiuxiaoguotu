@@ -4,7 +4,6 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import {
-  Plus,
   Sparkles,
   Download,
   ArrowRight,
@@ -12,7 +11,6 @@ import {
   ScanLine,
   Users,
   Layers,
-  Building2,
 } from "lucide-react";
 import {
   Button,
@@ -24,6 +22,7 @@ import {
   Field,
   inputCls,
   Alert,
+  Spinner,
 } from "@/components/ui";
 import type { SampleFloorplan } from "@/lib/samples";
 
@@ -112,10 +111,10 @@ export function HomeClient({
           {/* Logo 区域 */}
           <div className="flex items-center gap-3">
             <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br from-primary to-secondary shadow-glow-purple">
-              <Sparkles size={18} className="text-white" />
+              <Sparkles size={18} className="text-ink" />
             </span>
             <div>
-              <span className="text-[15px] font-bold tracking-tight text-white">
+              <span className="text-[15px] font-bold tracking-tight text-ink">
                 AuraDesign VR
               </span>
               <span className="ml-2 text-[12px] text-ink-mute">AI 装修项目控制台</span>
@@ -123,38 +122,34 @@ export function HomeClient({
           </div>
 
           {/* 导航标签 */}
-          <nav className="flex items-center gap-1 rounded-xl bg-white/[0.04] p-1">
+          <nav role="tablist" aria-label="内容切换" className="flex items-center gap-1 rounded-xl bg-white/[0.04] p-1">
             <button
+              type="button"
+              role="tab"
+              aria-selected={tab === "projects"}
               onClick={() => setTab("projects")}
-              className={`rounded-lg px-4 py-2 text-[13px] font-medium transition-all ${
+              className={`rounded-lg px-4 py-2 text-[13px] font-medium transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/70 ${
                 tab === "projects"
-                  ? "bg-primary/20 text-white shadow-sm"
-                  : "text-ink-mute hover:text-ink hover:bg-white/5"
+                  ? "bg-primary/20 text-ink shadow-sm"
+                  : "text-ink-mute hover:text-ink hover:bg-white/[0.05]"
               }`}
             >
               项目列表
             </button>
             <button
+              type="button"
+              role="tab"
+              aria-selected={tab === "samples"}
               onClick={() => setTab("samples")}
-              className={`rounded-lg px-4 py-2 text-[13px] font-medium transition-all ${
+              className={`rounded-lg px-4 py-2 text-[13px] font-medium transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/70 ${
                 tab === "samples"
-                  ? "bg-primary/20 text-white shadow-sm"
-                  : "text-ink-mute hover:text-ink hover:bg-white/5"
+                  ? "bg-primary/20 text-ink shadow-sm"
+                  : "text-ink-mute hover:text-ink hover:bg-white/[0.05]"
               }`}
             >
-              项目详情
+              标准户型图库
             </button>
           </nav>
-
-          {/* 右侧工具 */}
-          <div className="flex items-center gap-3">
-            <button className="flex h-9 w-9 items-center justify-center rounded-xl text-ink-mute transition-colors hover:bg-white/6 hover:text-ink">
-              <Building2 size={18} />
-            </button>
-            <button className="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br from-primary to-secondary text-white shadow-sm">
-              <Users size={17} />
-            </button>
-          </div>
         </div>
       </header>
 
@@ -165,7 +160,7 @@ export function HomeClient({
             <div>
               <div className="mb-5 flex items-center justify-between">
                 <div>
-                  <h2 className="text-[19px] font-semibold text-white">项目列表</h2>
+                  <h2 className="text-[19px] font-semibold text-ink">项目列表</h2>
                   <p className="mt-1 text-[12.5px] text-ink-mute">
                     共 {projects.length} 个项目
                   </p>
@@ -192,8 +187,9 @@ export function HomeClient({
                             // eslint-disable-next-line @next/next/no-img-element
                             <img
                               src={p.coverUrl}
-                              alt=""
-                              className="h-full w-full object-cover opacity-80 group-hover:opacity-100 transition-opacity"
+                              alt={`${p.title} 项目封面`}
+                              loading="lazy"
+                              className="h-full w-full object-cover opacity-95 group-hover:opacity-100 transition-opacity"
                             />
                           ) : (
                             <Box size={26} className="text-ink-mute/40" />
@@ -202,7 +198,7 @@ export function HomeClient({
                         {/* 信息区 */}
                         <div className="flex min-w-0 flex-1 flex-col justify-center px-5 py-4">
                           <div className="flex items-center gap-2.5">
-                            <h3 className="truncate text-[14.5px] font-semibold text-white group-hover:text-primary-light transition-colors">
+                            <h3 className="truncate text-[14.5px] font-semibold text-ink group-hover:text-primary-light transition-colors">
                               {p.title}
                             </h3>
                             <Badge tone="primary">{p.workflowLabel}</Badge>
@@ -287,7 +283,7 @@ export function HomeClient({
                     onClick={() => createProject()}
                     disabled={creating}
                   >
-                    {creating ? "创建中…" : "创建项目并上传户型图"}
+                    {creating ? "创建中…" : "创建项目"}
                   </Button>
                 </CardBody>
               </Card>
@@ -306,11 +302,12 @@ export function HomeClient({
                       {/* eslint-disable-next-line @next/next/no-img-element */}
                       <img
                         src={s.previewUrl}
-                        alt={s.name}
-                        className="h-14 w-20 shrink-0 rounded-lg object-cover opacity-80"
+                        alt={`${s.name} 户型预览图`}
+                        loading="lazy"
+                        className="h-14 w-20 shrink-0 rounded-lg object-cover opacity-95"
                       />
                       <div className="min-w-0 flex-1">
-                        <p className="text-[13px] font-semibold text-white">{s.name}</p>
+                        <p className="text-[13px] font-semibold text-ink">{s.name}</p>
                         <p className="text-[11.5px] text-ink-mute mt-0.5">
                           {s.grossAreaM2}m² · {s.unitNo}
                         </p>
@@ -319,24 +316,26 @@ export function HomeClient({
                         <a
                           href={s.fileUrl}
                           download
-                          className="flex h-8 w-8 items-center justify-center rounded-lg text-ink-mute hover:bg-white/6 hover:text-ink transition-colors"
+                          className="flex h-8 w-8 items-center justify-center rounded-lg text-ink-mute hover:bg-white/[0.06] hover:text-ink transition-colors"
                           title="下载户型图"
                         >
                           <Download size={15} />
                         </a>
                         <button
+                          type="button"
                           onClick={() => createProject(s.id)}
                           disabled={creatingSampleId === s.id}
-                          className="flex h-8 items-center gap-1 rounded-lg bg-gradient-to-r from-primary to-purple-500 px-2.5 text-[11.5px] font-medium text-white shadow-glow-purple hover:brightness-110 disabled:opacity-60"
+                          className="flex h-8 items-center gap-1 rounded-lg bg-gradient-to-r from-primary to-purple-500 px-2.5 text-[11.5px] font-medium text-ink shadow-glow-purple hover:brightness-110 disabled:opacity-60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/70"
                         >
-                          {creatingSampleId === s.id ? "…" : "使用"}
+                          {creatingSampleId === s.id ? (<><Spinner />创建中…</>) : "使用"}
                         </button>
                       </div>
                     </div>
                   ))}
                   <button
+                    type="button"
                     onClick={() => setTab("samples")}
-                    className="w-full text-center text-[12.5px] font-medium text-secondary-light hover:text-secondary transition-colors py-1"
+                    className="w-full text-center text-[12.5px] font-medium text-secondary-light hover:text-secondary transition-colors py-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/70"
                   >
                     查看全部 {samples.length} 套标准户型图 →
                   </button>
@@ -347,7 +346,7 @@ export function HomeClient({
         ) : (
           <div>
             <div className="mb-6">
-              <h2 className="text-[19px] font-semibold text-white">
+              <h2 className="text-[19px] font-semibold text-ink">
                 标准户型图库
               </h2>
               <p className="mt-1 text-[12.5px] text-ink-mute">
@@ -360,18 +359,19 @@ export function HomeClient({
                   {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img
                     src={s.previewUrl}
-                    alt={s.name}
-                    className="h-[200px] w-full bg-surface object-contain opacity-70 group-hover:opacity-90 transition-opacity"
+                    alt={`${s.name} 户型预览图`}
+                    loading="lazy"
+                    className="h-[200px] w-full bg-surface object-contain opacity-95 group-hover:opacity-100 transition-opacity"
                   />
                   <CardBody className="space-y-3">
                     <div className="flex items-start justify-between">
                       <div>
-                        <h3 className="text-[14px] font-semibold text-white">{s.name}</h3>
+                        <h3 className="text-[14px] font-semibold text-ink">{s.name}</h3>
                         <p className="mt-0.5 text-[11.5px] text-ink-mute">
                           {s.grossAreaM2}m² · {s.unitNo} · {s.width}×{s.height}px
                         </p>
                       </div>
-                      <Badge tone="info">{s.id}</Badge>
+                      <Badge tone="info">标准户型</Badge>
                     </div>
                     <p className="text-[12px] leading-5 text-ink-mute/80">
                       {s.note}
@@ -380,14 +380,15 @@ export function HomeClient({
                       <a
                         href={s.fileUrl}
                         download
-                        className="inline-flex h-9 flex-1 items-center justify-center gap-1.5 rounded-lg border border-white/[0.08] text-[12.5px] font-medium text-ink-soft hover:bg-white/5 hover:text-ink transition-colors"
+                        className="inline-flex h-9 flex-1 items-center justify-center gap-1.5 rounded-lg border border-white/[0.08] text-[12.5px] font-medium text-ink-soft hover:bg-white/[0.05] hover:text-ink transition-colors"
                       >
                         <Download size={13} /> 下载
                       </a>
                       <button
+                        type="button"
                         onClick={() => createProject(s.id)}
                         disabled={creatingSampleId === s.id}
-                        className="inline-flex h-9 flex-1 items-center justify-center gap-1.5 rounded-lg bg-gradient-to-r from-primary to-purple-500 text-[12.5px] font-medium text-white shadow-glow-purple hover:brightness-110 disabled:opacity-60"
+                        className="inline-flex h-9 flex-1 items-center justify-center gap-1.5 rounded-lg bg-gradient-to-r from-primary to-purple-500 text-[12.5px] font-medium text-ink shadow-glow-purple hover:brightness-110 disabled:opacity-60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/70"
                       >
                         {creatingSampleId === s.id ? "创建中…" : "一键创建项目"}
                       </button>

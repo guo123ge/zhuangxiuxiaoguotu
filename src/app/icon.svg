@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="AuraDesign VR">
+  <defs>
+    <linearGradient id="aura" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#06b6d4"/>
+      <stop offset="1" stop-color="#8b5cf6"/>
+    </linearGradient>
+  </defs>
+  <rect width="64" height="64" rx="14" fill="#0b1021"/>
+  <rect x="6" y="6" width="52" height="52" rx="11" fill="url(#aura)" opacity="0.16"/>
+  <path d="M14 40 32 30l18 10-18 10-18-10Z" fill="none" stroke="url(#aura)" stroke-width="3" stroke-linejoin="round"/>
+  <path d="M14 40V25l18-10 18 10v15" fill="none" stroke="url(#aura)" stroke-width="3" stroke-linejoin="round" opacity="0.75"/>
+  <path d="M32 30v20" stroke="url(#aura)" stroke-width="3" stroke-linecap="round"/>
+</svg>

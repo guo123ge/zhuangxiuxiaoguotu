@@ -1,8 +1,9 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { Sparkles, X, Eye, EyeOff, Loader2, CheckCircle2, AlertCircle } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { Sparkles, X, Eye, EyeOff } from "lucide-react";
 import { fitLabel } from "@/lib/ai/models";
+import { inputCls, selectCls, Button, Spinner, Notice } from "@/components/ui";
 import CloudAiChat from "./CloudAiChat";
 
 type ModelInfo = {
@@ -45,6 +46,10 @@ export default function AiAssistant() {
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
 
+  const fabRef = useRef<HTMLButtonElement | null>(null);
+  const drawerRef = useRef<HTMLDivElement | null>(null);
+  const hasOpenedRef = useRef(false);
+
   const load = async () => {
     const r = await fetch("/api/ai/config");
     const data = await r.json();
@@ -55,6 +60,29 @@ export default function AiAssistant() {
   };
 
   useEffect(() => { load(); }, []);
+
+  // ESC 关闭：仅在抽屉打开时监听 keydown
+  useEffect(() => {
+    if (!open) return;
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setOpen(false);
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [open]);
+
+  // 焦点管理：打开移入抽屉首个可聚焦元素，关闭归还浮标按钮
+  useEffect(() => {
+    if (open) {
+      hasOpenedRef.current = true;
+      const first = drawerRef.current?.querySelector<HTMLElement>(
+        'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
+      );
+      first?.focus();
+    } else if (hasOpenedRef.current) {
+      fabRef.current?.focus();
+    }
+  }, [open]);
 
   const selectedModelId = slot === "vision" ? visionModelId : textModelId;
   const setSelectedModelId = slot === "vision" ? setVisionModelId : setTextModelId;
@@ -95,23 +123,40 @@ export default function AiAssistant() {
 
   return (
     <>
-      <button
-        onClick={() => setOpen(true)}
-        className="fixed bottom-6 right-6 z-40 flex h-12 w-12 items-center justify-center rounded-full bg-violet-600 text-white shadow-lg shadow-violet-600/30 transition hover:bg-violet-700"
-        title="AI 助手"
+      {!open && (
+        <button
+          ref={fabRef}
+          onClick={() => setOpen(true)}
+          className="fixed bottom-6 right-6 z-40 flex h-12 w-12 items-center justify-center rounded-full bg-primary text-white shadow-lg shadow-primary/30 transition hover:bg-primary-light"
+          title="AI 助手"
+          aria-label="打开 AI 助手"
+        >
+          <Sparkles className="h-5 w-5" />
+        </button>
+      )}
+
+      {open && (
+        <div
+          className="fixed inset-0 z-[45] bg-black/20"
+          onClick={() => setOpen(false)}
+          aria-hidden="true"
+        />
+      )}
+
+      <div
+        ref={drawerRef}
+        role="dialog"
+        aria-modal="true"
+        aria-label="AI 助手"
+        aria-hidden={!open}
+        className={`fixed right-0 top-0 z-50 flex h-full w-[400px] max-w-[92vw] flex-col bg-sidebar shadow-2xl transition-transform duration-300 ${open ? "translate-x-0" : "translate-x-full"}`}
       >
-        <Sparkles className="h-5 w-5" />
-      </button>
-
-      {open && <div className="fixed inset-0 z-40 bg-black/20" onClick={() => setOpen(false)} />}
-
-      <div className={`fixed right-0 top-0 z-50 flex h-full w-[400px] max-w-[92vw] flex-col bg-white shadow-2xl transition-transform duration-300 ${open ? "translate-x-0" : "translate-x-full"}`}>
-        <div className="flex items-center justify-between border-b border-slate-200 px-5 py-4">
+        <div className="flex items-center justify-between border-b border-border px-5 py-4">
           <div>
-            <h2 className="text-base font-semibold text-slate-800">AI 助手</h2>
-            <p className="text-xs text-slate-400">模型选择 · 密钥配置 · 连接测试</p>
+            <h2 className="text-base font-semibold text-ink">AI 助手</h2>
+            <p className="text-xs text-ink-mute">模型选择 · 密钥配置 · 连接测试</p>
           </div>
-          <button onClick={() => setOpen(false)} className="rounded p-1 text-slate-400 hover:bg-slate-100">
+          <button onClick={() => setOpen(false)} aria-label="关闭" className="rounded p-1 text-ink-mute hover:bg-white/[0.06] hover:text-ink">
             <X className="h-5 w-5" />
           </button>
         </div>
@@ -122,38 +167,38 @@ export default function AiAssistant() {
 
           {/* 当前状态 */}
           {status && (
-            <div className="mb-4 rounded-lg border border-slate-200 bg-slate-50 p-3">
+            <div className="mb-4 rounded-lg border border-border bg-surface p-3">
               <div className="flex items-center gap-2">
-                <span className={`h-2 w-2 rounded-full ${status.available ? "bg-emerald-500" : "bg-slate-300"}`} />
-                <span className="text-sm font-medium text-slate-700">{status.available ? "AI 已启用" : "未启用 AI"}</span>
+                <span className={`h-2 w-2 rounded-full ${status.available ? "bg-success" : "bg-ink-mute"}`} />
+                <span className="text-sm font-medium text-ink">{status.available ? "AI 已启用" : "未启用 AI"}</span>
               </div>
-              <div className="mt-2 space-y-1 text-xs text-slate-500">
-                <p>视觉识别：<span className={status.vision ? "font-medium text-emerald-600" : "text-slate-400"}>{status.visionModelName ?? "未配置"}</span></p>
-                <p>文本对话：<span className={status.text ? "font-medium text-emerald-600" : "text-slate-400"}>{status.textModelName ?? "未配置"}</span></p>
+              <div className="mt-2 space-y-1 text-xs text-ink-soft">
+                <p>视觉识别：<span className={status.vision ? "font-medium text-on-success" : "text-ink-mute"}>{status.visionModelName ?? "未配置"}</span></p>
+                <p>文本对话：<span className={status.text ? "font-medium text-on-success" : "text-ink-mute"}>{status.textModelName ?? "未配置"}</span></p>
               </div>
             </div>
           )}
 
           {/* 槽位切换 */}
-          <div className="mb-3 grid grid-cols-2 gap-1 rounded-lg bg-slate-100 p-1">
+          <div className="mb-3 grid grid-cols-2 gap-1 rounded-lg bg-white/[0.04] p-1">
             {(Object.keys(SLOT_META) as Slot[]).map((s) => (
               <button
                 key={s}
                 onClick={() => switchSlot(s)}
-                className={`rounded-md py-1.5 text-sm font-medium transition ${slot === s ? "bg-white text-violet-700 shadow-sm" : "text-slate-500 hover:text-slate-700"}`}
+                className={`rounded-md py-1.5 text-sm font-medium transition ${slot === s ? "bg-primary/15 text-primary-light shadow-sm" : "text-ink-soft hover:text-ink"}`}
               >
                 {SLOT_META[s].label}
               </button>
             ))}
           </div>
-          <p className="mb-2 text-xs text-slate-400">{SLOT_META[slot].hint}</p>
+          <p className="mb-2 text-xs text-ink-mute">{SLOT_META[slot].hint}</p>
 
           {/* 模型选择 */}
-          <label className="mb-1.5 block text-xs font-medium text-slate-500">选择模型</label>
+          <label className="mb-1.5 block text-xs font-medium text-ink-soft">选择模型</label>
           <select
             value={selectedModelId}
             onChange={(e) => { setSelectedModelId(e.target.value); setApiKey(""); setMsg(null); }}
-            className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm focus:border-violet-500 focus:outline-none"
+            className={selectCls}
           >
             {models.map((m) => (
               <option key={m.id} value={m.id}>
@@ -164,10 +209,10 @@ export default function AiAssistant() {
 
           {/* 模型详情 */}
           {current && (
-            <div className="mt-3 rounded-lg border border-slate-200 p-3">
+            <div className="mt-3 rounded-lg border border-border bg-white/[0.03] p-3">
               <div className="flex items-center justify-between">
-                <span className="text-sm font-semibold text-slate-700">{current.name}</span>
-                <span className={`rounded px-2 py-0.5 text-xs font-medium ${current.fitScore >= 4 ? "bg-emerald-50 text-emerald-700" : current.fitScore >= 3 ? "bg-amber-50 text-amber-700" : "bg-slate-100 text-slate-500"}`}>
+                <span className="text-sm font-semibold text-ink">{current.name}</span>
+                <span className={`rounded px-2 py-0.5 text-xs font-medium ${current.fitScore >= 4 ? "bg-success/10 text-on-success" : current.fitScore >= 3 ? "bg-warning/10 text-on-warning" : "bg-white/[0.04] text-ink-mute"}`}>
                   适配度 {fitLabel(current.fitScore)}
                 </span>
               </div>
@@ -176,50 +221,49 @@ export default function AiAssistant() {
                 <CapTag label="文本" on={current.capabilities.text} />
                 <CapTag label="生图" on={current.capabilities.image} />
               </div>
-              <p className="mt-2 text-xs leading-5 text-slate-600">{current.fit}</p>
+              <p className="mt-2 text-xs leading-5 text-ink-soft">{current.fit}</p>
               <div className="mt-2 grid grid-cols-2 gap-2 text-xs">
                 <div>
-                  <p className="mb-1 font-medium text-emerald-600">优势</p>
-                  <ul className="space-y-0.5 text-slate-500">{current.pros.map((p) => <li key={p}>· {p}</li>)}</ul>
+                  <p className="mb-1 font-medium text-on-success">优势</p>
+                  <ul className="space-y-0.5 text-ink-soft">{current.pros.map((p) => <li key={p}>· {p}</li>)}</ul>
                 </div>
                 <div>
-                  <p className="mb-1 font-medium text-rose-600">劣势</p>
-                  <ul className="space-y-0.5 text-slate-500">{current.cons.map((c) => <li key={c}>· {c}</li>)}</ul>
+                  <p className="mb-1 font-medium text-on-danger">劣势</p>
+                  <ul className="space-y-0.5 text-ink-soft">{current.cons.map((c) => <li key={c}>· {c}</li>)}</ul>
                 </div>
               </div>
             </div>
           )}
 
           {/* API Key */}
-          <label className="mb-1.5 mt-4 block text-xs font-medium text-slate-500">API Key</label>
+          <label className="mb-1.5 mt-4 block text-xs font-medium text-ink-soft">API Key</label>
           <div className="relative">
             <input
               type={showKey ? "text" : "password"}
               value={apiKey}
               onChange={(e) => setApiKey(e.target.value)}
               placeholder={current?.hasKey ? "已配置，留空则保留原密钥" : "粘贴 API Key"}
-              className="w-full rounded-md border border-slate-300 px-3 py-2 pr-9 text-sm focus:border-violet-500 focus:outline-none"
+              className={`${inputCls} pr-9`}
             />
-            <button type="button" onClick={() => setShowKey((v) => !v)} className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600">
+            <button type="button" onClick={() => setShowKey((v) => !v)} aria-label={showKey ? "隐藏密钥" : "显示密钥"} className="absolute right-2 top-1/2 -translate-y-1/2 text-ink-mute hover:text-ink">
               {showKey ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
             </button>
           </div>
-          <p className="mt-1.5 text-xs text-slate-400">密钥仅保存在本机 data/ai-config.json（已加入 .gitignore，不入库）。</p>
+          <p className="mt-1.5 text-xs text-ink-mute">密钥仅保存在本机 data/ai-config.json（已加入 .gitignore，不入库）。</p>
 
           <div className="mt-3 flex gap-2">
-            <button onClick={save} disabled={busy} className="flex flex-1 items-center justify-center gap-1.5 rounded-md bg-violet-600 py-2 text-sm text-white hover:bg-violet-700 disabled:opacity-50">
-              {busy && <Loader2 className="h-4 w-4 animate-spin" />}保存
-            </button>
-            <button onClick={test} disabled={busy} className="flex flex-1 items-center justify-center gap-1.5 rounded-md border border-slate-300 py-2 text-sm text-slate-700 hover:bg-slate-50 disabled:opacity-50">
+            <Button onClick={save} disabled={busy} className="flex-1">
+              {busy && <Spinner />}保存
+            </Button>
+            <Button variant="secondary" onClick={test} disabled={busy} className="flex-1">
               测试连接
-            </button>
+            </Button>
           </div>
 
           {msg && (
-            <div className={`mt-3 flex items-start gap-2 rounded-md p-2.5 text-xs ${msg.ok ? "bg-emerald-50 text-emerald-700" : "bg-rose-50 text-rose-700"}`}>
-              {msg.ok ? <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0" /> : <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />}
-              <span className="leading-5">{msg.text}</span>
-            </div>
+            <Notice tone={msg.ok ? "success" : "danger"} className="mt-3">
+              {msg.text}
+            </Notice>
           )}
         </div>
       </div>
@@ -229,7 +273,7 @@ export default function AiAssistant() {
 
 function CapTag({ label, on }: { label: string; on: boolean }) {
   return (
-    <span className={`rounded px-1.5 py-0.5 text-[11px] font-medium ${on ? "bg-violet-100 text-violet-700" : "bg-slate-100 text-slate-400 line-through"}`}>
+    <span className={`rounded px-1.5 py-0.5 text-[11px] font-medium ${on ? "bg-primary/15 text-primary-light" : "bg-white/[0.04] text-ink-mute line-through"}`}>
       {label}
     </span>
   );

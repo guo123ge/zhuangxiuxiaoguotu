@@ -13,7 +13,10 @@ import "@photo-sphere-viewer/core/index.css";
 import "@photo-sphere-viewer/markers-plugin/index.css";
 import { Viewer } from "@photo-sphere-viewer/core";
 import { MarkersPlugin } from "@photo-sphere-viewer/markers-plugin";
+import { ChevronLeft, ChevronRight, Play, Square } from "lucide-react";
+import { Button, ProgressBar, Spinner } from "@/components/ui";
 import { buildHouse } from "@/lib/model3d/builder";
+import { RENDER_CONFIG } from "@/lib/model3d/renderConfig";
 import { capturePanorama } from "@/lib/pano/capture";
 import { planTour, type WaypointPlan } from "@/lib/pano/route";
 import { styleById } from "@/lib/styles";
@@ -31,17 +34,37 @@ export default function TourViewer({ json, styleId = "modern-minimal", projectId
   const markersRef = useRef<MarkersPlugin | null>(null);
   const [panos, setPanos] = useState<Pano[]>([]);
   const [current, setCurrent] = useState(0);
-  const [status, setStatus] = useState("准备中…");
+  const [status, setStatus] = useState("正在准备漫游…");
   const [auto, setAuto] = useState(false);
+  const [failed, setFailed] = useState(false);
+  const [progress, setProgress] = useState({ current: 0, total: 0 });
+  const [retryKey, setRetryKey] = useState(0);
   const currentRef = useRef(0);
   const goToRef = useRef<(idx: number) => void>(() => {});
   const busyRef = useRef(false);
 
   const route = useMemo(() => planTour(json), [json]);
 
+  // 全景清晰度分档：站点多或窄屏时自动回落，避免六面渲染与 base64 体积线性放大。
+  // 缓存命中时沿用既有清晰度（不改 /api/tour 的请求或返回格式）。
+  const quality = useMemo(() => {
+    const [bx0, by0, bx1, by1] = json.buildingBoxMm;
+    const buildingDiagonalM = Math.hypot(bx1 - bx0, by1 - by0) / 1000;
+    const narrow = typeof window !== "undefined" && window.innerWidth < 1280;
+    const fallback =
+      route.waypoints.length >= RENDER_CONFIG.panoramaFallbackWaypoints || narrow;
+    return {
+      width: fallback
+        ? RENDER_CONFIG.panoramaFaceWidthFallback
+        : RENDER_CONFIG.panoramaFaceWidth,
+      buildingDiagonalM,
+    };
+  }, [json, route.waypoints.length]);
+
   // ── 1. 加载全景：优先命中落库缓存，否则现场捕获并回存 ──
   useEffect(() => {
     let cancelled = false;
+    setFailed(false);
 
     const loadCached = async (): Promise<Pano[] | null> => {
       if (!projectId) return null;
@@ -61,25 +84,32 @@ export default function TourViewer({ json, styleId = "modern-minimal", projectId
     };
 
     const captureAndSave = async (): Promise<Pano[]> => {
-      setStatus("构建三维场景…");
+      setStatus("正在生成空间…");
       const style = styleById.get(styleId) ?? styleById.get("modern-minimal")!;
       const { group } = buildHouse(json, { style, ceiling: true });
       const scene = new THREE.Scene();
-      scene.background = new THREE.Color("#f5f1ea");
+      scene.background = new THREE.Color(RENDER_CONFIG.background);
       scene.add(group);
 
       const result: Pano[] = [];
-      for (let i = 0; i < route.waypoints.length; i++) {
+      const total = route.waypoints.length;
+      setProgress({ current: 0, total });
+      for (let i = 0; i < total; i++) {
         if (cancelled) return result;
         const wp = route.waypoints[i];
-        setStatus(`渲染全景 ${i + 1}/${route.waypoints.length}：${wp.label}`);
+        setStatus(`正在渲染第 ${i + 1} / ${total} 处：${wp.label}`);
+        setProgress({ current: i, total });
         await new Promise((r) => setTimeout(r, 30));
         const pos = new THREE.Vector3(wp.xMm / 1000, 1.6, wp.yMm / 1000);
-        const { dataUrl } = capturePanorama(scene, pos, { width: 640 });
-        const nxt = route.waypoints[Math.min(i + 1, route.waypoints.length - 1)];
+        const { dataUrl } = capturePanorama(scene, pos, {
+          width: quality.width,
+          buildingDiagonalM: quality.buildingDiagonalM,
+        });
+        const nxt = route.waypoints[Math.min(i + 1, total - 1)];
         const yawToNext = Math.atan2((nxt.xMm - wp.xMm) / 1000, (nxt.yMm - wp.yMm) / 1000);
         result.push({ wp, dataUrl, yawToNext });
       }
+      setProgress({ current: total, total });
       return result;
     };
 
@@ -87,13 +117,13 @@ export default function TourViewer({ json, styleId = "modern-minimal", projectId
       try {
         const cached = await loadCached();
         if (cached) {
-          if (!cancelled) { setPanos(cached); setStatus("已加载缓存全景"); }
+          if (!cancelled) { setPanos(cached); setStatus("已就绪"); }
           return;
         }
         const result = await captureAndSave();
         if (cancelled) return;
         setPanos(result);
-        setStatus("完成");
+        setStatus("已就绪");
         // 回存（后台，不阻塞展示）
         if (projectId && result.length > 0) {
           fetch(`/api/projects/${projectId}/tour`, {
@@ -111,14 +141,15 @@ export default function TourViewer({ json, styleId = "modern-minimal", projectId
       } catch (e) {
         console.error("[tour] 捕获全景失败:", (e as Error).message);
         console.error("[tour] stack:", (e as Error).stack);
-        setStatus(`渲染失败：${(e as Error).message}`);
+        setStatus("漫游生成失败，请稍后重试");
+        setFailed(true);
       }
     })();
     return () => {
       cancelled = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [json, styleId, projectId]);
+  }, [json, styleId, projectId, retryKey]);
 
   // ── 2. 初始化 PSV ──
   useEffect(() => {
@@ -136,7 +167,9 @@ export default function TourViewer({ json, styleId = "modern-minimal", projectId
         plugins: [[MarkersPlugin, {}]],
       });
     } catch (e) {
-      setStatus(`全景查看器初始化失败：${(e as Error).message}`);
+      console.error("[tour] 全景查看器初始化失败:", (e as Error).message);
+      setStatus("全景查看器初始化失败，请重试");
+      setFailed(true);
       return;
     }
     viewerRef.current = viewer;
@@ -163,8 +196,8 @@ export default function TourViewer({ json, styleId = "modern-minimal", projectId
       const seen = new Set<string>();
       // 前一/后一各一个热点，末点只有回退
       const targets = [
-        { dir: -1, label: "← 上一处" },
-        { dir: 1, label: "下一处 →" },
+        { dir: -1, label: "上一处" },
+        { dir: 1, label: "下一处" },
       ];
       for (const t of targets) {
         const ni = (idx + t.dir + n) % n;
@@ -179,7 +212,7 @@ export default function TourViewer({ json, styleId = "modern-minimal", projectId
         markers.addMarker({
           id,
           position: { yaw: `${((yaw * 180) / Math.PI).toFixed(1)}deg`, pitch: `${pitch}deg` },
-          html: `<button class="vr-hotspot" type="button"><span></span>${t.label}</button>`,
+          html: `<button class="vr-hotspot" type="button">${t.label}</button>`,
           size: { width: 132, height: 44 },
           anchor: "center center",
           tooltip: panos[ni].wp.label,
@@ -237,25 +270,46 @@ export default function TourViewer({ json, styleId = "modern-minimal", projectId
   }, [json]);
 
   return (
-    <div className="flex h-full gap-3">
+    <div className="flex h-full flex-col gap-3 md:flex-row">
       {/* 全景 */}
-      <div className="min-w-0 flex-1 overflow-hidden rounded-lg border border-slate-200 bg-slate-900">
+      <div className="min-h-[280px] min-w-0 flex-1 overflow-hidden rounded-lg border border-border bg-canvas-alt md:min-h-0">
         {panos.length === 0 ? (
-          <div className="flex h-full items-center justify-center text-sm text-slate-300">{status}</div>
+          <div className="flex h-full flex-col items-center justify-center gap-3 px-6 text-center">
+            <Spinner className="h-6 w-6 text-primary-light" label="加载中" />
+            <p className="text-sm text-ink-soft">{status}</p>
+            {progress.total > 0 && (
+              <div className="w-full max-w-xs">
+                <ProgressBar value={progress.current} total={progress.total} />
+                <p className="mt-1.5 text-xs text-ink-mute">
+                  已完成 {progress.current} / {progress.total} 处
+                </p>
+              </div>
+            )}
+            {failed && (
+              <Button size="sm" variant="secondary" onClick={() => setRetryKey((v) => v + 1)}>
+                重新生成
+              </Button>
+            )}
+          </div>
         ) : (
           <div ref={containerRef} className="h-full w-full" />
         )}
       </div>
 
       {/* 侧栏：小地图 + 途经点 + 控制 */}
-      <div className="flex w-60 shrink-0 flex-col gap-2 overflow-y-auto">
-        <svg width={minimap.w} height={minimap.h} className="rounded border border-slate-200 bg-white">
+      <div className="flex w-full shrink-0 flex-col gap-2 overflow-y-auto md:w-60">
+        <svg
+          viewBox={`0 0 ${minimap.w} ${minimap.h}`}
+          role="img"
+          aria-label="漫游路径小地图"
+          className="w-full rounded-lg border border-border bg-canvas-alt"
+        >
           {json.rooms.map((r) => (
             <polygon
               key={r.id}
               points={r.polygonMm.map(([x, y]) => `${minimap.X(x)},${minimap.Y(y)}`).join(" ")}
-              fill="#eef2ff"
-              stroke="#c7d2fe"
+              fill="rgba(139,92,246,0.10)"
+              stroke="rgba(167,139,250,0.35)"
               strokeWidth={1}
             />
           ))}
@@ -265,7 +319,7 @@ export default function TourViewer({ json, styleId = "modern-minimal", projectId
               key={i}
               x1={minimap.X(seg[0][0])} y1={minimap.Y(seg[0][1])}
               x2={minimap.X(seg[1][0])} y2={minimap.Y(seg[1][1])}
-              stroke="#8b5cf6" strokeWidth={2}
+              stroke="var(--color-primary)" strokeWidth={2}
             />
           ))}
           {route.waypoints.map((wp, i) => (
@@ -273,18 +327,22 @@ export default function TourViewer({ json, styleId = "modern-minimal", projectId
               key={wp.id}
               cx={minimap.X(wp.xMm)} cy={minimap.Y(wp.yMm)}
               r={i === current ? 5 : 3}
-              fill={i === current ? "#8b5cf6" : "#64748b"}
+              fill={i === current ? "var(--color-primary)" : "var(--color-ink-mute)"}
             />
           ))}
         </svg>
 
-        <div className="rounded border border-slate-200 bg-white p-2">
-          <div className="mb-1 text-xs font-medium text-slate-600">漫游路径（{route.waypoints.length} 站）</div>
+        <div className="rounded-lg border border-border bg-surface/80 p-2">
+          <div className="mb-1 text-xs font-medium text-ink-soft">漫游路径（{route.waypoints.length} 站）</div>
           <ul className="space-y-1">
             {route.waypoints.map((wp, i) => (
               <li
                 key={wp.id}
-                className={`cursor-pointer rounded px-2 py-1 text-xs ${i === current ? "bg-violet-50 text-violet-700" : "text-slate-600 hover:bg-slate-50"}`}
+                className={`cursor-pointer rounded px-2 py-1 text-xs transition-colors ${
+                  i === current
+                    ? "bg-primary/15 text-primary-light"
+                    : "text-ink-soft hover:bg-white/[0.06] hover:text-ink"
+                }`}
                 onClick={() => panos.length > 0 && goTo(i)}
               >
                 {i + 1}. {wp.label}
@@ -294,19 +352,34 @@ export default function TourViewer({ json, styleId = "modern-minimal", projectId
         </div>
 
         <div className="flex gap-2">
-          <button className="flex-1 rounded bg-slate-800 py-1.5 text-xs text-white hover:bg-slate-700" onClick={() => goTo(Math.max(0, current - 1))}>
-            ← 上一处
-          </button>
-          <button className="flex-1 rounded bg-slate-800 py-1.5 text-xs text-white hover:bg-slate-700" onClick={() => goTo(Math.min(panos.length - 1, current + 1))}>
-            下一处 →
-          </button>
+          <Button
+            size="sm"
+            variant="secondary"
+            className="flex-1"
+            disabled={panos.length < 2}
+            onClick={() => goTo(Math.max(0, current - 1))}
+          >
+            <ChevronLeft size={14} aria-hidden="true" /> 上一处
+          </Button>
+          <Button
+            size="sm"
+            variant="secondary"
+            className="flex-1"
+            disabled={panos.length < 2}
+            onClick={() => goTo(Math.min(panos.length - 1, current + 1))}
+          >
+            下一处 <ChevronRight size={14} aria-hidden="true" />
+          </Button>
         </div>
-        <button
-          className={`rounded py-1.5 text-xs ${auto ? "bg-red-500 text-white" : "bg-violet-600 text-white hover:bg-violet-700"}`}
+        <Button
+          size="sm"
+          variant={auto ? "secondary" : "primary"}
+          disabled={panos.length < 2}
           onClick={() => setAuto((v) => !v)}
         >
-          {auto ? "停止导览" : "▶ 自动导览"}
-        </button>
+          {auto ? <Square size={14} aria-hidden="true" /> : <Play size={14} aria-hidden="true" />}
+          {auto ? "停止导览" : "自动导览"}
+        </Button>
       </div>
     </div>
   );

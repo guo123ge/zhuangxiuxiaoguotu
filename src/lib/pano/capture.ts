@@ -5,8 +5,10 @@
  * 再用等距圆柱投影着色器合成 2:1 全景图，输出 dataURL 供 PSV 显示。
  *
  * 几何、尺寸、视角全部来自三维场景，保证效果图与漫游同源一致。
+ * 色调映射与色彩空间由 renderConfig 统一，避免与 R3F 视口默认值漂移。
  */
 import * as THREE from "three";
+import { RENDER_CONFIG } from "@/lib/model3d/renderConfig";
 
 export type CaptureResult = {
   dataUrl: string;
@@ -22,6 +24,8 @@ void main() {
 }
 `;
 
+// 合成的 ShaderMaterial 不会自动套用 renderer 的 tone mapping / 色彩空间转换，
+// 因此六面渲染时已把 sRGB 结果写入 cubemap，这里只做采样，绝不二次转换。
 const EQ_FRAG = /* glsl */ `
 varying vec2 vUv;
 uniform samplerCube uMap;
@@ -42,13 +46,23 @@ void main() {
 export function capturePanorama(
   scene: THREE.Object3D,
   position: THREE.Vector3,
-  opts: { width?: number; eyeHeight?: number; near?: number; far?: number } = {},
+  opts: {
+    width?: number;
+    eyeHeight?: number;
+    near?: number;
+    far?: number;
+    /** 户型包围盒对角线（米），用于自适应远端裁剪 */
+    buildingDiagonalM?: number;
+  } = {},
 ): CaptureResult {
   const width = opts.width ?? 1024; // 每面分辨率；全景输出 2*width × width（2:1 等距圆柱）
   const height = width; // 输出高度 = 立方体单面尺寸（2:1 才能正确映射 360°×180°）
   const eye = opts.eyeHeight ?? 1.6;
 
   const renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
+  renderer.toneMapping = RENDER_CONFIG.toneMapping;
+  renderer.toneMappingExposure = RENDER_CONFIG.toneMappingExposure;
+  renderer.outputColorSpace = RENDER_CONFIG.outputColorSpace;
   renderer.setSize(width, height, false);
 
   const cubeTarget = new THREE.WebGLCubeRenderTarget(width, {
@@ -58,8 +72,12 @@ export function capturePanorama(
     minFilter: THREE.LinearFilter,
     magFilter: THREE.LinearFilter,
   });
+  // 六面渲染时就把线性光照结果编码成 sRGB 存入 cubemap；
+  // EQ 阶段是自定义 ShaderMaterial，无法自动做色彩空间转换。
+  cubeTarget.texture.colorSpace = THREE.SRGBColorSpace;
 
-  const cubeCamera = new THREE.CubeCamera(opts.near ?? 0.1, opts.far ?? 50, cubeTarget);
+  const far = opts.far ?? (opts.buildingDiagonalM ? Math.max(50, opts.buildingDiagonalM * 1.5) : 50);
+  const cubeCamera = new THREE.CubeCamera(opts.near ?? 0.1, far, cubeTarget);
   cubeCamera.position.copy(position);
   cubeCamera.update(renderer, scene);
 
@@ -81,7 +99,11 @@ export function capturePanorama(
   renderer.render(quad, cam);
 
   const canvas = renderer.domElement;
-  const dataUrl = canvas.toDataURL("image/jpeg", 0.86);
+  // WebP 同质量体积更小；不支持的浏览器 toDataURL 会返回 PNG，此时退回 JPEG。
+  const webp = canvas.toDataURL("image/webp", 0.9);
+  const dataUrl = webp.startsWith("data:image/webp")
+    ? webp
+    : canvas.toDataURL("image/jpeg", 0.9);
 
   // 先释放 renderTarget（需在 renderer 尚存活时反分配 GPU 资源），
   // 再释放 renderer——顺序反了会在 three 0.185 的 deallocateRenderTarget 里

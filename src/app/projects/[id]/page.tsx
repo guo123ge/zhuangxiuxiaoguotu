@@ -1,6 +1,8 @@
 import { notFound } from "next/navigation";
 import Link from "next/link";
+import { ArrowRight } from "lucide-react";
 import { prisma } from "@/lib/db";
+import { canonicalRoomType } from "@/lib/roomType";
 import { PageContainer } from "@/components/layout/PageContainer";
 import { TopBar } from "@/components/layout/AppSidebar";
 import {
@@ -11,6 +13,7 @@ import {
   StepBar,
   Button,
   Alert,
+  EmptyState,
 } from "@/components/ui";
 import {
   WORKFLOW_LABEL,
@@ -27,6 +30,14 @@ function stepIndex(status: string) {
   }
   return 0;
 }
+
+const NEXT_STEPS = [
+  { key: "parse", label: WORKFLOW_STEPS[0].label, desc: "上传并解析户型图" },
+  { key: "model", label: WORKFLOW_STEPS[1].label, desc: "生成精确三维模型" },
+  { key: "design", label: WORKFLOW_STEPS[2].label, desc: "硬装软装多方案对比" },
+  { key: "tour", label: WORKFLOW_STEPS[3].label, desc: "入户路径全景漫游" },
+  { key: "manage", label: "分享与配套", desc: "客户分享、工程量预算、AI 提案" },
+] as const;
 
 export default async function ProjectOverviewPage({
   params,
@@ -118,65 +129,65 @@ export default async function ProjectOverviewPage({
               />
               <CardBody>
                 {project.rooms.length === 0 ? (
-                  <div className="py-6 text-center">
-                    <p className="text-[13px] text-ink-soft">
-                      还没有房间数据，请先完成第一步户型识别。
-                    </p>
-                    <Link href={`/projects/${project.id}/parse`} className="mt-4 inline-block">
-                      <Button size="sm">前往户型识别</Button>
-                    </Link>
-                  </div>
+                  <EmptyState
+                    title="还没有房间数据"
+                    description="请先完成户型识别，识别结果确认后会自动同步到这里。"
+                    action={
+                      <Link href={`/projects/${project.id}/parse`}>
+                        <Button size="sm">前往户型识别</Button>
+                      </Link>
+                    }
+                  />
                 ) : (
                   <div className="overflow-x-auto">
                     <table className="w-full text-left text-[13px]">
                       <thead>
                         <tr className="border-b border-border text-[12px] text-ink-soft">
-                          <th className="pb-2.5 pr-4 font-semibold">房间</th>
-                          <th className="pb-2.5 pr-4 font-semibold">类型</th>
-                          <th className="pb-2.5 pr-4 font-semibold">面积</th>
-                          <th className="pb-2.5 pr-4 font-semibold">开间 × 进深</th>
-                          <th className="pb-2.5 pr-4 font-semibold">朝向</th>
-                          <th className="pb-2.5 pr-4 font-semibold">识别来源</th>
-                          <th className="pb-2.5 font-semibold">置信度</th>
+                          <th scope="col" className="whitespace-nowrap pb-2.5 pr-4 font-semibold">房间</th>
+                          <th scope="col" className="whitespace-nowrap pb-2.5 pr-4 font-semibold">类型</th>
+                          <th scope="col" className="whitespace-nowrap pb-2.5 pr-4 font-semibold">面积</th>
+                          <th scope="col" className="whitespace-nowrap pb-2.5 pr-4 font-semibold">开间 × 进深</th>
+                          <th scope="col" className="whitespace-nowrap pb-2.5 pr-4 font-semibold">朝向</th>
+                          <th scope="col" className="whitespace-nowrap pb-2.5 pr-4 font-semibold">识别来源</th>
+                          <th scope="col" className="whitespace-nowrap pb-2.5 font-semibold">置信度</th>
                         </tr>
                       </thead>
                       <tbody>
                         {project.rooms.map((r) => (
                           <tr
                             key={r.id}
-                            className="border-b border-border/60 last:border-0"
+                            className="border-b border-border/60 transition-colors last:border-0 hover:bg-white/[0.03]"
                           >
-                            <td className="py-2.5 pr-4 font-medium text-ink">
+                            <td className="whitespace-nowrap py-2.5 pr-4 font-medium text-ink">
                               {r.name}
                             </td>
-                            <td className="py-2.5 pr-4 text-ink-soft">
-                              {ROOM_TYPE_LABEL[r.roomType as keyof typeof ROOM_TYPE_LABEL] ??
-                                r.roomType}
+                            <td className="whitespace-nowrap py-2.5 pr-4 text-ink-soft">
+                              {ROOM_TYPE_LABEL[canonicalRoomType(r.roomType)]}
                             </td>
-                            <td className="py-2.5 pr-4 text-ink-soft">
+                            <td className="whitespace-nowrap py-2.5 pr-4 text-ink-soft">
                               {r.areaM2.toFixed(1)} m²
                             </td>
-                            <td className="py-2.5 pr-4 text-ink-soft">
+                            <td className="whitespace-nowrap py-2.5 pr-4 text-ink-soft">
                               {r.lengthMm && r.widthMm
                                 ? `${(r.lengthMm / 1000).toFixed(2)} × ${(r.widthMm / 1000).toFixed(2)} m`
                                 : "—"}
                             </td>
-                            <td className="py-2.5 pr-4 text-ink-soft">
+                            <td className="whitespace-nowrap py-2.5 pr-4 text-ink-soft">
                               {r.orientation || "—"}
                             </td>
-                            <td className="py-2.5 pr-4">
+                            <td className="whitespace-nowrap py-2.5 pr-4">
                               <Badge tone="neutral">{r.source}</Badge>
                             </td>
-                            <td className="py-2.5">
+                            <td className="whitespace-nowrap py-2.5">
                               <span
-                                  className={
-                                    r.confidence >= 0.75
-                                      ? "text-secondary-light"
-                                      : r.confidence >= 0.55
-                                        ? "text-yellow-300"
-                                        : "text-red-300"
-                                  }
-                                >
+                                className={
+                                  r.confidence >= 0.75
+                                    ? "text-secondary-light"
+                                    : r.confidence >= 0.55
+                                      ? "text-on-warning"
+                                      : "text-on-danger"
+                                }
+                              >
                                 {(r.confidence * 100).toFixed(0)}%
                               </span>
                             </td>
@@ -195,27 +206,23 @@ export default async function ProjectOverviewPage({
             <Card>
               <CardHeader title="继续工作流" />
               <CardBody className="space-y-2.5">
-                {(
-                  [
-                    { key: "parse", label: "① 户型识别", desc: "上传并解析户型图" },
-                    { key: "model", label: "② 三维建模", desc: "生成精确三维模型" },
-                    { key: "design", label: "③ 方案设计", desc: "硬装软装多方案对比" },
-                    { key: "tour", label: "④ 全景漫游", desc: "入户路径全景漫游" },
-                    { key: "manage", label: "⑤ 分享与配套", desc: "客户分享、工程量预算、AI 提案" },
-                  ] as const
-                ).map((item) => (
+                {NEXT_STEPS.map((item, i) => (
                   <Link
                     key={item.key}
                     href={`/projects/${project.id}/${item.key}`}
-                    className="flex items-center justify-between rounded-xl border border-white/[0.06] px-4 py-3 transition-colors hover:border-border-hover hover:bg-white/[0.04]"
+                    className="flex items-center justify-between gap-3 rounded-xl border border-white/[0.06] px-4 py-3 transition-colors hover:border-border-hover hover:bg-white/[0.04] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60"
                   >
-                    <div>
-                      <p className="text-[13.5px] font-medium text-ink">
-                        {item.label}
-                      </p>
+                    <span
+                      aria-hidden="true"
+                      className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-white/6 text-xs font-semibold text-ink-soft"
+                    >
+                      {i + 1}
+                    </span>
+                    <div className="min-w-0 flex-1">
+                      <p className="text-[13.5px] font-medium text-ink">{item.label}</p>
                       <p className="text-[12px] text-ink-soft">{item.desc}</p>
                     </div>
-                    <span className="text-ink-mute">→</span>
+                    <ArrowRight size={16} className="shrink-0 text-ink-mute" aria-hidden="true" />
                   </Link>
                 ))}
               </CardBody>
@@ -231,10 +238,10 @@ export default async function ProjectOverviewPage({
                   project.floorplans.map((f) => (
                     <div
                       key={f.id}
-                      className="rounded-[0.5rem] border border-border p-3"
+                      className="rounded-lg border border-border p-3"
                     >
                       <div className="flex items-start justify-between gap-2">
-                        <p className="min-w-0 truncate text-[13px] font-medium text-ink">
+                        <p className="min-w-0 truncate text-[13px] font-medium text-ink" title={f.originalName}>
                           {f.originalName}
                         </p>
                         <Badge
@@ -268,7 +275,7 @@ export default async function ProjectOverviewPage({
             {/* 识别状态提示 */}
             {project.workflowStatus === WORKFLOW_STATUS.CREATED && (
               <Alert tone="info" title="尚未上传户型图">
-                请先在「① 户型识别」中上传户型图，或使用标准户型图库一键创建。
+                请先在「户型识别」中上传户型图，或使用标准户型图库一键创建。
               </Alert>
             )}
             {entryDoor && (

@@ -16,6 +16,7 @@ import { Evaluator, Brush, SUBTRACTION } from "three-bvh-csg";
 import type { FloorplanJson, RoomJson, OpeningJson } from "../parse/pipeline.ts";
 import { matchColor, matchMaterial, type StyleSeed } from "../styles.ts";
 import { materialById, type MaterialSeed } from "../materials.ts";
+import { canonicalRoomType, furnitureKind } from "../roomType.ts";
 import { makeMaterialTexture, materialRepeat } from "./texture.ts";
 
 export type BuildOptions = {
@@ -72,6 +73,43 @@ function stdMat(color: string, opts: Partial<THREE.MeshStandardMaterialParameter
   return new THREE.MeshStandardMaterial({ color, roughness: 0.85, metalness: 0.02, ...opts });
 }
 
+/** 色温（K）→ sRGB 颜色，Tanner Helland 近似；让 16 套风格的冷暖差异可见 */
+function kelvinToRgb(kelvin: number): THREE.Color {
+  const t = Math.max(1500, Math.min(9000, kelvin)) / 100;
+  let r: number, g: number, b: number;
+  if (t <= 66) {
+    r = 255;
+    g = 99.4708025861 * Math.log(t) - 161.1195681661;
+  } else {
+    r = 329.698727446 * Math.pow(t - 60, -0.1332047592);
+    g = 288.1221695283 * Math.pow(t - 60, -0.0755148492);
+  }
+  if (t >= 66) b = 255;
+  else if (t <= 19) b = 0;
+  else b = 138.5177312231 * Math.log(t - 10) - 305.0447927307;
+  const clamp = (v: number) => Math.max(0, Math.min(255, v)) / 255;
+  return new THREE.Color().setRGB(clamp(r), clamp(g), clamp(b), THREE.SRGBColorSpace);
+}
+
+/** 共享一张径向渐变贴图作为「假接地阴影」，零阴影贴图通道、零额外渲染 pass */
+function makeContactShadowTexture(): THREE.CanvasTexture | null {
+  if (typeof document === "undefined") return null;
+  const canvas = document.createElement("canvas");
+  canvas.width = 128;
+  canvas.height = 128;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) return null;
+  const grad = ctx.createRadialGradient(64, 64, 4, 64, 64, 62);
+  grad.addColorStop(0, "rgba(0,0,0,0.45)");
+  grad.addColorStop(0.55, "rgba(0,0,0,0.18)");
+  grad.addColorStop(1, "rgba(0,0,0,0)");
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, 0, 128, 128);
+  const tex = new THREE.CanvasTexture(canvas);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  return tex;
+}
+
 type FaceTarget = "FLOOR" | "WALL" | "CEILING" | "CABINET";
 
 /** 解析某房间某目标面在指定风格下的「颜色 + 材质对象」（覆盖集优先） */
@@ -83,11 +121,13 @@ function resolveFace(
   overlay?: BuildOptions["overlay"],
 ): { colorHex: string; material: MaterialSeed | null } {
   const over = roomId ? overlay?.[roomId]?.[target.toLowerCase() as "floor" | "wall" | "ceiling" | "cabinet"] : undefined;
-  const materialId = matchMaterial(style.id, target, roomType);
+  // "*" 是材质/颜色规则里的通配房间类型，必须原样透传，不能被归一化成 OTHER。
+  const ruleType = roomType === "*" ? "*" : canonicalRoomType(roomType);
+  const materialId = matchMaterial(style.id, target, ruleType);
   const material = materialId ? materialById.get(materialId) ?? null : null;
   const defaultColor = target === "FLOOR" ? "#d8cfc4" : target === "WALL" ? "#f5f5f0" : "#ffffff";
   // 颜色优先级：覆盖集 > 风格颜色规则 > 材质本色 > 默认
-  const colorHex = over ?? matchColor(style.id, target, roomType) ?? material?.colorHex ?? defaultColor;
+  const colorHex = over ?? matchColor(style.id, target, ruleType) ?? material?.colorHex ?? defaultColor;
   return { colorHex, material };
 }
 
@@ -140,7 +180,11 @@ export function buildHouse(json: FloorplanJson, opts: BuildOptions): { group: TH
       brush = new Brush(result.geometry);
       brush.updateMatrixWorld();
     }
-    wallMesh = new THREE.Mesh(brush.geometry, stdMat(resolveFace(style, "WALL", "*").colorHex));
+    const wallFace = resolveFace(style, "WALL", "*");
+    wallMesh = new THREE.Mesh(brush.geometry, stdMat(wallFace.colorHex, {
+      roughness: wallFace.material?.roughness ?? 0.92,
+      metalness: wallFace.material?.metallic ?? 0.02,
+    }));
     wallMesh.name = "walls";
     group.add(wallMesh);
   }
@@ -154,7 +198,7 @@ export function buildHouse(json: FloorplanJson, opts: BuildOptions): { group: TH
     metalness: 0,
     side: THREE.DoubleSide,
   });
-  const frameMat = stdMat(resolveFace(style, "CABINET", "*").colorHex, { metalness: 0.3, roughness: 0.4 });
+  const frameMat = stdMat(resolveFace(style, "CABINET", "*").colorHex, { metalness: 0.3, roughness: 0.35 });
   if (wallMesh) {
     for (const op of json.openings) {
       if (op.kind !== "window") continue;
@@ -186,7 +230,8 @@ export function buildHouse(json: FloorplanJson, opts: BuildOptions): { group: TH
 
   const overlay = opts.overlay;
   // ── 3. 地面（按房间类型取材质，规格平铺 + 真实粗糙度/金属度）──
-  const floorY = 0.002;
+  // 与墙底 y=0 拉开 5mm，避免共面 z-fighting
+  const floorY = 0.005;
   for (const room of json.rooms) {
     const shape = polygonToShape(room.polygonMm);
     if (!shape) continue;
@@ -224,40 +269,49 @@ export function buildHouse(json: FloorplanJson, opts: BuildOptions): { group: TH
         12,
       );
       geo.rotateX(Math.PI / 2); // 朝下
-      const mesh = new THREE.Mesh(geo, stdMat(resolveFace(style, "CEILING", "*").colorHex, { side: THREE.DoubleSide }));
-      mesh.position.y = wallH;
+      const ceilingFace = resolveFace(style, "CEILING", "*");
+      const mesh = new THREE.Mesh(geo, stdMat(ceilingFace.colorHex, {
+        roughness: ceilingFace.material?.roughness ?? 0.95,
+        metalness: ceilingFace.material?.metallic ?? 0.02,
+        side: THREE.DoubleSide,
+      }));
+      // 与墙顶错开 5mm，避免共面闪烁
+      mesh.position.y = wallH - 0.005;
       mesh.name = "ceiling";
       group.add(mesh);
     }
   }
 
   // ── 5. 家具（程序化摆件）──
+  const contactShadow = makeContactShadowTexture();
   let furnitureCount = 0;
   for (const room of json.rooms) {
-    const count = placeFurniture(group, room, style, wallH, overlay);
+    const count = placeFurniture(group, room, style, wallH, overlay, contactShadow);
     furnitureCount += count;
   }
 
-  // ── 6. 灯光 ──
+  // ── 6. 灯光（色温来自风格 lightingJson.cctK，环境光保持中性以稳定亮度）──
   const lighting = style.lightingJson;
+  const keyColor = kelvinToRgb(lighting.cctK);
   const amb = new THREE.AmbientLight("#ffffff", lighting.ambientIntensity);
   amb.name = "ambient";
   group.add(amb);
   const hemi = new THREE.HemisphereLight("#e8f0ff", "#b0a090", lighting.keyIntensity * 0.4);
   group.add(hemi);
-  const key = new THREE.DirectionalLight("#fff4e0", lighting.keyIntensity);
+  const key = new THREE.DirectionalLight(keyColor, lighting.keyIntensity);
   key.position.set(8, 14, 6);
   key.castShadow = false;
   group.add(key);
   // 每个房间一盏点光（强度按面积）
   for (const room of json.rooms) {
     const [cx, cy] = room.centroidMm;
-    const pt = new THREE.PointLight("#fff2df", Math.min(0.5, room.areaM2 * 0.02 + 0.15), M(7000), 1.6);
+    const pt = new THREE.PointLight(keyColor, Math.min(0.5, room.areaM2 * 0.02 + 0.15), M(7000), 1.6);
     pt.position.set(M(cx), wallH - 0.25, M(cy));
     group.add(pt);
   }
 
-  const wallTris = wallMesh ? countTris(wallMesh.geometry) : 0;  return {
+  const wallTris = wallMesh ? countTris(wallMesh.geometry) : 0;
+  return {
     group,
     stats: { wallTris, furnitureCount, buildMs: Math.round(performance.now() - t0), warnings },
   };
@@ -316,9 +370,16 @@ function boxAt(group: THREE.Group, spec: BoxSpec, x: number, y: number, z: numbe
 
 /**
  * 按房间类型布置程序化家具。多边形质心处放置主家具，
- * 位置基于房间包围盒（够用；后续可在编辑器中拖动调整）。
+ * 位置基于房间包围盒；尺寸按房间包围盒做上限约束以减轻穿墙。
  */
-export function placeFurniture(group: THREE.Group, room: RoomJson, style: StyleSeed, wallH: number, overlay?: BuildOptions["overlay"]): number {
+export function placeFurniture(
+  group: THREE.Group,
+  room: RoomJson,
+  style: StyleSeed,
+  wallH: number,
+  overlay?: BuildOptions["overlay"],
+  shadowTex?: THREE.Texture | null,
+): number {
   const poly = room.polygonMm;
   if (poly.length < 3) return 0;
   // 包围盒
@@ -335,11 +396,36 @@ export function placeFurniture(group: THREE.Group, room: RoomJson, style: StyleS
   const whiteMat = stdMat("#f4f4f2", { roughness: 0.35 });
   let n = 0;
   const put = (spec: BoxSpec, x: number, y: number, z: number, rot: number, mat: THREE.Material, name: string) => {
-    boxAt(group, spec, x, y, z, rot, mat, name);
+    // 家具尺寸不超过房间包围盒的 90%，避免小房间明显穿墙（不重排位置）
+    const maxW = Math.max(0.6, w * 0.9);
+    const maxD = Math.max(0.6, d * 0.9);
+    const clamped: BoxSpec = [
+      Math.max(0.2, Math.min(spec[0], maxW)),
+      spec[1],
+      Math.max(0.2, Math.min(spec[2], maxD)),
+    ];
+    boxAt(group, clamped, x, y, z, rot, mat, name);
+    // 假接地阴影：共享渐变贴图，无 shadow map、无额外渲染 pass
+    if (shadowTex && clamped[1] > 0.15) {
+      const shadow = new THREE.Mesh(
+        new THREE.PlaneGeometry(clamped[0] * 1.5, clamped[2] * 1.5),
+        new THREE.MeshBasicMaterial({
+          map: shadowTex,
+          transparent: true,
+          depthWrite: false,
+          opacity: 0.8,
+          toneMapped: false,
+        }),
+      );
+      shadow.rotation.x = -Math.PI / 2;
+      shadow.position.set(x, 0.008, z);
+      shadow.name = "contact-shadow";
+      group.add(shadow);
+    }
     n++;
   };
 
-  switch (room.type) {
+  switch (furnitureKind(room.type)) {
     case "living": {
       // 沙发（组合）+ 茶几 + 电视柜
       put([2.2, 0.42, 0.95], cx, 0.21, cz + d * 0.28, 0, fabMat, "sofa");
@@ -350,8 +436,7 @@ export function placeFurniture(group: THREE.Group, room: RoomJson, style: StyleS
       put([1.3, 0.75, 0.06], cx, 1.05, cz - d * 0.38, 0, stdMat("#101418", { roughness: 0.2 }), "tv");
       break;
     }
-    case "bedroom":
-    case "master": {
+    case "bed": {
       // 床 + 床头柜 + 衣柜
       const bedW = Math.min(1.8, w * 0.55);
       put([bedW, 0.45, 2.05], cx, 0.23, cz + d * 0.12, 0, fabMat, "bed");

@@ -13,18 +13,14 @@ export default async function ProjectLayout({
 }) {
   const project = await prisma.project.findUnique({
     where: { id: params.id },
-    select: { id: true, title: true, workflowStatus: true },
+    select: { id: true, workflowStatus: true },
   });
   if (!project) notFound();
 
   return (
     <div className="min-h-screen bg-canvas">
-      <AppSidebar
-        projectId={project.id}
-        projectTitle={project.title}
-        workflowStatus={project.workflowStatus}
-      />
-      <main className="ml-[72px] min-h-screen">{children}</main>
+      <AppSidebar projectId={project.id} workflowStatus={project.workflowStatus} />
+      <main className="ml-[var(--width-sidebar)] min-h-screen">{children}</main>
     </div>
   );
 }

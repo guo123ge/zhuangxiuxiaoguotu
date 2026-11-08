@@ -4,13 +4,16 @@ import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import { TopBar } from "@/components/layout/AppSidebar";
 import { PageContainer } from "@/components/layout/PageContainer";
-import { Card, CardBody, CardHeader, Badge, Button } from "@/components/ui";
+import { Card, CardBody, CardHeader, Badge, Button, Notice, inputCls } from "@/components/ui";
 
 type QtyLine = { id?: string; itemName: string; category: string; quantity: number; unit: string; roomId: string | null; formulaJson?: string };
 type BudgetRow = { itemName: string; category: string; quantity: number; unit: string; unitPrice: number; laborPrice: number; amount: number };
 type ShareLink = { id: string; shortToken: string; hasAccessCode: boolean; viewCount: number; revokedAt: string | null; createdAt: string };
 type Proposal = { id: string; prompt: string; patchJson: string; status: string; summary?: string };
 type Reference = { id: string; originalName: string; fileUrl: string; thumbnailUrl: string | null; createdAt: string };
+
+const exportLinkCls =
+  "inline-flex h-8 items-center justify-center gap-2 rounded-lg bg-gradient-to-r from-primary to-purple-500 px-3 text-[12.5px] font-medium text-white shadow-glow-purple transition-all duration-200 hover:shadow-lg hover:brightness-110 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/70 focus-visible:ring-offset-2 focus-visible:ring-offset-canvas";
 
 export default function ManagePage() {
   const params = useParams<{ id: string }>();
@@ -125,21 +128,20 @@ export default function ManagePage() {
           <Card>
             <CardHeader title="客户分享" subtitle="生成只读链接，客户可查看三维与全景并反馈" />
             <CardBody className="space-y-3">
-              <div className="flex gap-2">
+              <div className="flex items-center gap-2">
                 <input
                   value={accessCode}
                   onChange={(e) => setAccessCode(e.target.value)}
                   placeholder="访问码（可选，留空则免码）"
-                  className="min-w-0 flex-1 rounded border border-white/[0.08] px-3 py-1.5 text-sm"
+                  className={`${inputCls} min-w-0 flex-1`}
                 />
                 <Button size="sm" onClick={createShare}>生成链接</Button>
               </div>
               {newShare && (
-                <div className="rounded border border-emerald-200 bg-emerald-50 p-3 text-sm">
-                  <p className="font-medium text-emerald-700">链接已生成（token 仅显示一次）</p>
-                  <p className="mt-1 break-all text-emerald-600">{newShare.url}</p>
-                  {newShare.accessCode && <p className="text-emerald-600">访问码：{newShare.accessCode}</p>}
-                </div>
+                <Notice tone="success" title="链接已生成（token 仅显示一次）">
+                  <p className="break-all">{newShare.url}</p>
+                  {newShare.accessCode && <p>访问码：{newShare.accessCode}</p>}
+                </Notice>
               )}
               {links.length === 0 ? (
                 <p className="text-sm text-ink-mute">尚无分享链接</p>
@@ -162,12 +164,12 @@ export default function ManagePage() {
           <Card>
             <CardHeader title="AI 变更提案" subtitle="用一句话描述修改，生成参数补丁后确认应用" />
             <CardBody className="space-y-3">
-              <div className="flex gap-2">
+              <div className="flex items-center gap-2">
                 <input
                   value={prompt}
                   onChange={(e) => setPrompt(e.target.value)}
                   placeholder="例如：把主卧墙面换成奶油白、地面换浅色木地板"
-                  className="min-w-0 flex-1 rounded border border-white/[0.08] px-3 py-1.5 text-sm"
+                  className={`${inputCls} min-w-0 flex-1`}
                 />
                 <Button size="sm" onClick={propose} disabled={busy || !prompt}>生成提案</Button>
               </div>
@@ -184,8 +186,8 @@ export default function ManagePage() {
                         </Badge>
                         {p.status === "PROPOSED" && (
                           <>
-                            <button className="text-xs text-emerald-600 hover:underline" onClick={() => applyProposal(p.id, "APPLY")}>应用</button>
-                            <button className="text-xs text-red-500 hover:underline" onClick={() => applyProposal(p.id, "REJECT")}>拒绝</button>
+                            <button type="button" className="rounded px-2 py-1 text-xs text-on-success transition-colors hover:bg-success/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/70" onClick={() => applyProposal(p.id, "APPLY")}>应用</button>
+                            <button type="button" className="rounded px-2 py-1 text-xs text-on-danger transition-colors hover:bg-danger/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/70" onClick={() => applyProposal(p.id, "REJECT")}>拒绝</button>
                           </>
                         )}
                       </div>
@@ -200,9 +202,9 @@ export default function ManagePage() {
           <Card>
             <CardHeader title="参考图" subtitle="上传风格参考、现场照片或意向图，作为设计参考" />
             <CardBody className="space-y-3">
-              <label className="block cursor-pointer rounded border border-dashed border-white/[0.08] px-4 py-6 text-center text-sm text-ink-mute hover:border-primary/50 hover:text-primary-light">
+              <label className="block cursor-pointer rounded border border-dashed border-white/[0.08] px-4 py-6 text-center text-sm text-ink-mute hover:border-primary/50 hover:text-primary-light focus-within:border-primary/50 focus-within:ring-2 focus-within:ring-primary/45">
                 点击上传图片（PNG / JPG / WebP）
-                <input type="file" accept="image/png,image/jpeg,image/webp" className="hidden" onChange={uploadReference} />
+                <input type="file" accept="image/png,image/jpeg,image/webp" className="sr-only" onChange={uploadReference} />
               </label>
               {references.length === 0 ? (
                 <p className="text-sm text-ink-mute">暂无参考图</p>
@@ -211,9 +213,9 @@ export default function ManagePage() {
                   {references.map((ref) => (
                     <div key={ref.id} className="group relative overflow-hidden rounded border border-white/[0.06]">
                       {/* eslint-disable-next-line @next/next/no-img-element */}
-                      <img src={ref.thumbnailUrl ?? ref.fileUrl} alt={ref.originalName} className="h-20 w-full object-cover" />
+                      <img src={ref.thumbnailUrl ?? ref.fileUrl} alt={ref.originalName} className="h-20 w-full object-cover" loading="lazy" />
                       <div className="absolute inset-0 hidden items-center justify-end bg-black/40 p-1 group-hover:flex">
-                        <button className="rounded bg-surface/80/90 px-2 py-0.5 text-xs text-red-600" onClick={() => removeReference(ref.id)}>删除</button>
+                        <button type="button" className="rounded bg-surface-hi px-2 py-0.5 text-xs text-on-danger hover:bg-danger/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/70" onClick={() => removeReference(ref.id)}>删除</button>
                       </div>
                     </div>
                   ))}
@@ -232,25 +234,25 @@ export default function ManagePage() {
               <div className="flex gap-2">
                 <Button size="sm" variant="secondary" onClick={genQuantities} disabled={busy}>生成工程量</Button>
                 <Button size="sm" variant="secondary" onClick={genBudget} disabled={busy || quantities.length === 0}>生成预算</Button>
-                <a href={`/api/projects/${params.id}/export?format=csv`} className="inline-flex items-center rounded bg-gradient-to-r from-primary to-purple-500 px-3 py-1 text-xs text-white hover:brightness-110">导出 CSV</a>
-                <a href={`/api/projects/${params.id}/export?format=json`} className="inline-flex items-center rounded bg-gradient-to-r from-primary to-purple-500 px-3 py-1 text-xs text-white hover:brightness-110">导出 JSON</a>
+                <a href={`/api/projects/${params.id}/export?format=csv`} className={exportLinkCls}>导出 CSV</a>
+                <a href={`/api/projects/${params.id}/export?format=json`} className={exportLinkCls}>导出 JSON</a>
               </div>
             }
           />
           <CardBody>
-            {msg && <p className="mb-3 text-sm text-ink-mute">{msg}</p>}
+            {msg && <Notice tone="info" className="mb-3">{msg}</Notice>}
             {quantities.length === 0 ? (
               <p className="text-sm text-ink-mute">尚未生成工程量，点击「生成工程量」开始。</p>
             ) : (
               <div className="overflow-x-auto">
-                <table className="w-full text-left text-[13px]">
+                <table className="w-full whitespace-nowrap text-left text-[13px]">
                   <thead>
                     <tr className="border-b border-white/[0.06] text-xs text-ink-mute">
-                      <th className="pb-2 pr-4">项目</th>
-                      <th className="pb-2 pr-4">类别</th>
-                      <th className="pb-2 pr-4">工程量</th>
-                      <th className="pb-2 pr-4">单位</th>
-                      {budget.length > 0 && (<><th className="pb-2 pr-4">单价(主材/人工)</th><th className="pb-2">金额(元)</th></>)}
+                      <th scope="col" className="pb-2 pr-4">项目</th>
+                      <th scope="col" className="pb-2 pr-4">类别</th>
+                      <th scope="col" className="pb-2 pr-4">工程量</th>
+                      <th scope="col" className="pb-2 pr-4">单位</th>
+                      {budget.length > 0 && (<><th scope="col" className="pb-2 pr-4">单价(主材/人工)</th><th scope="col" className="pb-2">金额(元)</th></>)}
                     </tr>
                   </thead>
                   <tbody>

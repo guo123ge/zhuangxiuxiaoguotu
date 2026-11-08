@@ -1,9 +1,10 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Send, Loader2, AlertCircle, Cloud, Square } from "lucide-react";
+import { Send, AlertCircle, Cloud, Square } from "lucide-react";
 import { cloud } from "@/lib/cloud";
 import type { ChatCompletionRequestMessage } from "@tencent-ai/workbuddy-cloud-sdk";
+import { inputCls, selectCls, Button, Spinner } from "@/components/ui";
 
 type ChatMsg = { role: "user" | "assistant"; content: string };
 type CloudModel = { id: string; name: string; enabled: boolean; disabled?: boolean };
@@ -95,11 +96,11 @@ export default function CloudAiChat() {
   }
 
   return (
-    <div className="mb-4 rounded-lg border border-violet-200 bg-violet-50/60 p-3">
+    <div className="mb-4 rounded-lg border border-border bg-surface p-3">
       <div className="mb-2 flex items-center gap-2">
-        <Cloud className="h-4 w-4 text-violet-600" />
-        <span className="text-sm font-semibold text-slate-700">云 AI 对话</span>
-        <span className="rounded bg-violet-100 px-1.5 py-0.5 text-[10px] font-medium text-violet-700">
+        <Cloud className="h-4 w-4 text-primary-light" />
+        <span className="text-sm font-semibold text-ink">云 AI 对话</span>
+        <span className="rounded bg-primary/15 px-1.5 py-0.5 text-[10px] font-medium text-primary-light">
           免密钥
         </span>
       </div>
@@ -107,7 +108,7 @@ export default function CloudAiChat() {
       <select
         value={modelId}
         onChange={(e) => setModelId(e.target.value)}
-        className="mb-2 w-full rounded-md border border-slate-300 bg-white px-2 py-1.5 text-xs focus:border-violet-500 focus:outline-none"
+        className={`${selectCls} mb-2`}
       >
         {models.length === 0 && <option value="">正在加载云模型…</option>}
         {models.map((m) => (
@@ -118,25 +119,32 @@ export default function CloudAiChat() {
         ))}
       </select>
 
-      <div ref={scrollRef} className="mb-2 max-h-44 space-y-1.5 overflow-y-auto">
+      <div ref={scrollRef} className="mb-2 max-h-44 space-y-2 overflow-y-auto rounded-md border border-border bg-canvas-alt p-2 text-ink-soft">
         {messages.length === 0 && (
-          <p className="text-xs leading-5 text-slate-400">
+          <p className="text-xs leading-5">
             已接入云服务，无需配置 API Key 即可与 AI 对话。
           </p>
         )}
         {messages.map((m, i) => (
           <div
             key={i}
-            className={`text-xs leading-5 ${m.role === "user" ? "text-slate-700" : "text-violet-700"}`}
+            className={`flex ${m.role === "user" ? "justify-end" : "justify-start"}`}
           >
-            <span className="font-medium">{m.role === "user" ? "我：" : "AI："}</span>
-            {m.content || (busy && i === messages.length - 1 ? "思考中…" : "")}
+            <div
+              className={`max-w-[85%] whitespace-pre-wrap break-words rounded-lg px-2.5 py-1.5 text-xs leading-5 ${m.role === "user" ? "bg-primary/15 text-ink" : "bg-surface-hi text-ink"}`}
+            >
+              {m.content || (busy && i === messages.length - 1 ? (
+                <span className="inline-flex items-center gap-1.5">
+                  <Spinner label="思考中" /> 思考中…
+                </span>
+              ) : "")}
+            </div>
           </div>
         ))}
       </div>
 
       {error && (
-        <div className="mb-2 flex items-start gap-1.5 rounded-md bg-rose-50 px-2 py-1.5 text-xs text-rose-700">
+        <div className="mb-2 flex items-start gap-1.5 rounded-md bg-danger/10 px-2 py-1.5 text-xs text-on-danger">
           <AlertCircle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
           <span className="leading-4">{error}</span>
         </div>
@@ -153,24 +161,16 @@ export default function CloudAiChat() {
             }
           }}
           placeholder="输入问题，回车发送"
-          className="flex-1 rounded-md border border-slate-300 px-2 py-1.5 text-sm focus:border-violet-500 focus:outline-none"
+          className={`${inputCls} flex-1`}
         />
         {busy ? (
-          <button
-            onClick={stop}
-            className="flex items-center gap-1 rounded-md bg-slate-600 px-2.5 py-1.5 text-xs text-white hover:bg-slate-700"
-          >
+          <Button variant="secondary" onClick={stop} className="shrink-0">
             <Square className="h-3.5 w-3.5" />停止
-          </button>
+          </Button>
         ) : (
-          <button
-            onClick={send}
-            disabled={!modelId || !input.trim()}
-            className="flex items-center gap-1 rounded-md bg-violet-600 px-2.5 py-1.5 text-xs text-white hover:bg-violet-700 disabled:opacity-50"
-          >
-            {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Send className="h-3.5 w-3.5" />}
-            发送
-          </button>
+          <Button onClick={send} disabled={!modelId || !input.trim()} className="shrink-0">
+            <Send className="h-3.5 w-3.5" />发送
+          </Button>
         )}
       </div>
     </div>

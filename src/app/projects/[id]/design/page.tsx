@@ -2,9 +2,11 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useParams } from "next/navigation";
+import { Plus, Star, Trash2 } from "lucide-react";
 import { TopBar } from "@/components/layout/AppSidebar";
 import { PageContainer } from "@/components/layout/PageContainer";
-import { Card, CardBody, EmptyState, Badge, Button } from "@/components/ui";
+import { ViewerFrame } from "@/components/layout/ViewerFrame";
+import { Card, CardBody, EmptyState, Badge, Button, Spinner } from "@/components/ui";
 import ModelViewer from "@/components/model3d/ModelViewer";
 import { designStyles, styleById } from "@/lib/styles";
 import type { FloorplanJson } from "@/lib/parse/pipeline";
@@ -18,6 +20,10 @@ type Scheme = {
 };
 type AssetLite = { id: string; status: string; reviewStatus: string; parseJson: string; originalName: string };
 type Overlay = Record<string, Partial<Record<"floor" | "wall" | "ceiling" | "cabinet", string>>>;
+
+// 与 selectCls 保持一致的圆角 / 边框 / 焦点态，仅尺寸更紧凑
+const compactSelectCls =
+  "w-full rounded-lg border border-white/[0.08] bg-surface/80 px-1.5 py-1 text-xs text-ink outline-none transition-all focus-visible:border-primary/60 focus-visible:ring-2 focus-visible:ring-primary/45";
 
 export default function DesignPage() {
   const params = useParams<{ id: string }>();
@@ -37,7 +43,7 @@ export default function DesignPage() {
       assets.find((a) => a.reviewStatus === "CONFIRMED" && a.status === "SUCCEEDED") ??
       [...assets].reverse().find((a) => a.status === "SUCCEEDED");
     if (!picked) {
-      setError("请先在「识别与确认」页完成户型解析");
+      setError("请先在「户型识别」页完成户型解析");
       return;
     }
     setJson(JSON.parse(picked.parseJson));
@@ -56,6 +62,8 @@ export default function DesignPage() {
     (async () => {
       try {
         await load();
+      } catch (e) {
+        setError(e instanceof Error ? e.message : "读取方案数据失败");
       } finally {
         setLoading(false);
       }
@@ -130,21 +138,23 @@ export default function DesignPage() {
 
   return (
     <>
-      <TopBar title="③ 硬软装设计" subtitle="多套方案参数化设计，可切换对比" />
+      <TopBar title="方案设计" subtitle="多套装修方案参数化切换，支持同屏对比" />
       <PageContainer>
-        <div className="flex h-[calc(100vh-13rem)] min-h-[480px] gap-3">
+        <ViewerFrame className="flex-col gap-3 md:flex-row">
           {/* 方案侧栏 */}
-          <div className="flex w-64 shrink-0 flex-col gap-2 overflow-y-auto">
+          <div className="flex w-full shrink-0 flex-col gap-2 overflow-y-auto md:w-64">
             <div className="flex items-center justify-between">
               <span className="text-sm font-semibold text-ink-soft">装修方案</span>
-              <Button size="sm" onClick={createScheme}>+ 新建</Button>
+              <Button size="sm" onClick={createScheme} aria-label="新建方案">
+                <Plus size={14} aria-hidden="true" /> 新建
+              </Button>
             </div>
             {schemes.map((s) => {
               const style = styleById.get(s.styleId ?? "");
               return (
                 <Card
                   key={s.id}
-                  className={`cursor-pointer ${selA === s.id && !compare ? "ring-2 ring-violet-500" : ""}`}
+                  className={`cursor-pointer ${selA === s.id && !compare ? "ring-2 ring-primary" : ""}`}
                 >
                   <CardBody className="py-2">
                     <div className="flex items-center gap-2" onClick={() => { setSelA(s.id); setCompare(false); }}>
@@ -155,26 +165,31 @@ export default function DesignPage() {
                         </div>
                         <div className="truncate text-xs text-ink-mute">{style?.name ?? "未选风格"}</div>
                       </div>
-                      <input
-                        type="radio"
-                        name="compare"
-                        className="ml-1"
-                        title="选为对比方案 A"
-                        checked={selA === s.id}
-                        onChange={() => setSelA(s.id)}
-                      />
-                      <input
-                        type="radio"
-                        name="compareB"
-                        className="ml-1"
-                        title="选为对比方案 B"
-                        checked={selB === s.id}
-                        onChange={() => setSelB(s.id)}
-                      />
+                      <label className="flex items-center gap-1 text-2xs text-ink-mute" title="选为对比方案 A">
+                        <input
+                          type="radio"
+                          name="compare"
+                          aria-label={`将 ${s.name} 选为对比方案 A`}
+                          checked={selA === s.id}
+                          onChange={() => setSelA(s.id)}
+                        />
+                        A
+                      </label>
+                      <label className="flex items-center gap-1 text-2xs text-ink-mute" title="选为对比方案 B">
+                        <input
+                          type="radio"
+                          name="compareB"
+                          aria-label={`将 ${s.name} 选为对比方案 B`}
+                          checked={selB === s.id}
+                          onChange={() => setSelB(s.id)}
+                        />
+                        B
+                      </label>
                     </div>
                     <div className="mt-2 flex items-center gap-2">
                       <select
-                        className="w-full rounded border border-white/[0.06] px-1 py-0.5 text-xs"
+                        aria-label={`${s.name} 的装修风格`}
+                        className={compactSelectCls}
                         value={s.styleId ?? ""}
                         onChange={(e) => changeStyle(s.id, e.target.value)}
                       >
@@ -182,8 +197,24 @@ export default function DesignPage() {
                           <option key={st.id} value={st.id}>{st.name}</option>
                         ))}
                       </select>
-                      <button className="text-xs text-ink-mute hover:text-primary-light" onClick={() => setPrimary(s.id)} title="设为主方案">设主</button>
-                      <button className="text-xs text-ink-mute hover:text-red-300" onClick={() => removeScheme(s.id)} title="删除">删</button>
+                      <button
+                        type="button"
+                        aria-label={`将 ${s.name} 设为主方案`}
+                        title="设为主方案"
+                        className="rounded p-1 text-ink-mute transition-colors hover:bg-white/6 hover:text-primary-light focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60"
+                        onClick={() => setPrimary(s.id)}
+                      >
+                        <Star size={14} aria-hidden="true" />
+                      </button>
+                      <button
+                        type="button"
+                        aria-label={`删除 ${s.name}`}
+                        title="删除方案"
+                        className="rounded p-1 text-ink-mute transition-colors hover:bg-danger/10 hover:text-on-danger focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60"
+                        onClick={() => removeScheme(s.id)}
+                      >
+                        <Trash2 size={14} aria-hidden="true" />
+                      </button>
                     </div>
                   </CardBody>
                 </Card>
@@ -205,14 +236,14 @@ export default function DesignPage() {
           {/* 查看区 */}
           <div className="flex min-h-0 min-w-0 flex-1 flex-col">
             {loading ? (
-              <Card><CardBody><EmptyState title="加载中…" description="正在读取户型与方案" /></CardBody></Card>
+              <Card><CardBody><div className="flex items-center justify-center gap-2 py-14 text-sm text-ink-soft"><Spinner label="加载中" />正在读取户型与方案</div></CardBody></Card>
             ) : error ? (
               <Card><CardBody><EmptyState title="暂无可设计户型" description={error} /></CardBody></Card>
             ) : (
               comparePanel
             )}
           </div>
-        </div>
+        </ViewerFrame>
       </PageContainer>
     </>
   );
