@@ -161,7 +161,7 @@ export default function TourViewer({ json, styleId = "modern-minimal", projectId
         panorama: panos[0].dataUrl,
         defaultZoomLvl: 50,
         mousewheel: true,
-        navbar: "zoom caption",
+        navbar: "zoom caption fullscreen",
         caption: panos[0].wp.label,
         loadingTxt: "加载全景…",
         plugins: [[MarkersPlugin, {}]],
@@ -272,27 +272,57 @@ export default function TourViewer({ json, styleId = "modern-minimal", projectId
   return (
     <div className="flex h-full flex-col gap-3 md:flex-row">
       {/* 全景 */}
-      <div className="min-h-[280px] min-w-0 flex-1 overflow-hidden rounded-lg border border-border bg-canvas-alt md:min-h-0">
-        {panos.length === 0 ? (
-          <div className="flex h-full flex-col items-center justify-center gap-3 px-6 text-center">
-            <Spinner className="h-6 w-6 text-primary-light" label="加载中" />
-            <p className="text-sm text-ink-soft">{status}</p>
-            {progress.total > 0 && (
-              <div className="w-full max-w-xs">
-                <ProgressBar value={progress.current} total={progress.total} />
-                <p className="mt-1.5 text-xs text-ink-mute">
-                  已完成 {progress.current} / {progress.total} 处
-                </p>
-              </div>
-            )}
-            {failed && (
-              <Button size="sm" variant="secondary" onClick={() => setRetryKey((v) => v + 1)}>
-                重新生成
-              </Button>
-            )}
+      <div className="flex min-h-[280px] min-w-0 flex-1 flex-col overflow-hidden rounded-lg border border-border bg-canvas-alt md:min-h-0">
+        <div className="relative min-h-0 flex-1">
+          {panos.length === 0 ? (
+            <div className="flex h-full flex-col items-center justify-center gap-3 px-6 text-center">
+              <Spinner className="h-6 w-6 text-primary-light" label="加载中" />
+              <p className="text-sm text-ink-soft">{status}</p>
+              {progress.total > 0 && (
+                <div className="w-full max-w-xs">
+                  <ProgressBar value={progress.current} total={progress.total} />
+                  <p className="mt-1.5 text-xs text-ink-mute">
+                    已完成 {progress.current} / {progress.total} 处
+                  </p>
+                </div>
+              )}
+              {failed && (
+                <Button size="sm" variant="secondary" onClick={() => setRetryKey((v) => v + 1)}>
+                  重新生成
+                </Button>
+              )}
+            </div>
+          ) : (
+            <div ref={containerRef} className="h-full w-full" />
+          )}
+        </div>
+
+        {/* 底部点位缩略图导航：复用已生成的全景数据，不额外发起请求或引入依赖 */}
+        {panos.length > 1 && (
+          <div className="shrink-0 border-t border-border bg-surface/80 px-2 py-2">
+            <div className="flex gap-2 overflow-x-auto pb-1" role="group" aria-label="漫游点位">
+              {panos.map((p, i) => (
+                <button
+                  key={p.wp.id}
+                  type="button"
+                  aria-current={i === current ? "step" : undefined}
+                  aria-label={`切换到第 ${i + 1} 处：${p.wp.label}`}
+                  onClick={() => goTo(i)}
+                  className={`w-[88px] shrink-0 overflow-hidden rounded-md border text-left transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/70 ${
+                    i === current
+                      ? "border-primary ring-1 ring-primary/40"
+                      : "border-white/[0.08] opacity-70 hover:opacity-100"
+                  }`}
+                >
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src={p.dataUrl} alt="" loading="lazy" className="h-11 w-full object-cover" />
+                  <span className={`block truncate px-1.5 py-1 text-[11px] ${i === current ? "text-primary-light" : "text-ink-mute"}`}>
+                    {i + 1}. {p.wp.label}
+                  </span>
+                </button>
+              ))}
+            </div>
           </div>
-        ) : (
-          <div ref={containerRef} className="h-full w-full" />
         )}
       </div>
 
